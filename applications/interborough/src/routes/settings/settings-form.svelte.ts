@@ -112,9 +112,11 @@ export function problemWith(
 }
 
 /**
- * A form key's value as it is compared: a property with no value (`null`, which a `SchemaForm`
- * leaves out, or `undefined`) is not there, and an object left with nothing set is not a value at
- * all, so the form drawing an empty field and handing it back is no edit.
+ * A form key's value as it is compared: a property with no value (`null`, a limit removed or never
+ * set, or `undefined`) is not there, and an object left with nothing set is not a value at all, so
+ * the form drawing an empty field and handing it back is no edit. A field that held a number and
+ * was cleared is an edit: it saves `null`, a value of its own. Only a setting that held nothing and
+ * is left empty is not, so the page cannot save `null` over a property the Bureau holds as missing.
  */
 function setValueOf(control: Control, value: unknown): unknown {
   const settled = withoutUnset(value);

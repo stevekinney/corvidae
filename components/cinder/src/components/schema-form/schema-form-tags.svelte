@@ -17,6 +17,7 @@
     disabled = false,
     value,
     draft = '',
+    placeholder,
     duplicateValuesAllowed,
     onValueChange,
     onblur,
@@ -30,6 +31,8 @@
     value: string[];
     /** Text typed earlier and not yet committed, put back when the control is mounted again. */
     draft?: string;
+    /** What the empty input says, such as "Not set" for a list that may be `null` and is. */
+    placeholder?: string | undefined;
     /** True when the schema does not require unique items. */
     duplicateValuesAllowed: boolean;
     onValueChange: (next: string[]) => void;
@@ -49,5 +52,13 @@
 </script>
 
 <FormField {id} {label} {description} {error} {required} {disabled}>
-  <TagInput {value} {duplicateValuesAllowed} commitOnSubmit {disabled} {onValueChange} {onblur} />
+  <TagInput
+    {value}
+    {...placeholder === undefined ? {} : { placeholder }}
+    {duplicateValuesAllowed}
+    commitOnSubmit
+    {disabled}
+    {onValueChange}
+    {onblur}
+  />
 </FormField>

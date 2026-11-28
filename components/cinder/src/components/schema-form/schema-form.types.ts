@@ -1,3 +1,4 @@
+import type { Snippet } from 'svelte';
 import type { HTMLFormAttributes } from 'svelte/elements';
 
 import type { JsonSchemaObject } from './schema-form-model.ts';
@@ -138,6 +139,36 @@ export type SchemaFormProps = Omit<HTMLFormAttributes, 'class' | 'onsubmit'> & {
    * `id`. Without the built-in button a form with several fields does not submit on Enter. Defaults to `true`.
    */
   submitVisible?: boolean;
+  /**
+   * Whether a schema that is itself a union of a literal and an object (an `anyOf` or `oneOf` of
+   * `"forever"` or `{ olderThan }`, or of `false` or an object) draws its own control for choosing
+   * between the two. Set `false` when the host draws that choice itself, such as a settings row
+   * whose switch is the choice between `false` and the object: the form then draws only the
+   * alternative the `value` holds. A union nested in a field always draws its control. The schema
+   * is validated as given either way. Defaults to `true`.
+   */
+  rootChoiceVisible?: boolean;
+  /**
+   * Whether the value the form edits is one row of a host's own settings list: a `SettingRow` the
+   * host draws, with the value's name, description, status and error. Read only with
+   * `variant="setting-rows"`. The form then draws no row for the root. A root that is one short
+   * field or one choice (a group whose only field is a number, or a union of `false` and an object)
+   * hands its one control to the host through `onRootControl`, for the row's control column, with
+   * the field's own label kept as the control's accessible name. Everything else is drawn where the
+   * form is mounted, which is the row's `disclosure`: the fields of a group with several, and the
+   * fields a chosen alternative adds. A form with nothing to draw there says so
+   * (`data-cinder-root-body="none"`) and takes no room. A control drawn in the host's row is outside
+   * the `<form>`, so pass `disabled` to lock it and expect no submit on Enter from it. Defaults to
+   * `false`.
+   */
+  rootRowHosted?: boolean;
+  /**
+   * Called once when a `rootRowHosted` form mounts, with the snippet that draws the root's one
+   * control, or `undefined` when the root has none (a group of several fields, or a root union whose
+   * choice the host draws). Render it in the host row's `control` for as long as the form is mounted,
+   * and stop when the form is unmounted: the form does not call again when it is destroyed.
+   */
+  onRootControl?: (control: Snippet | undefined) => void;
   /**
    * Whether the form is drawn inside another surface, such as a card or a page's own form. A hosted
    * form is a `div` with `role="group"` and no `<form>` of its own, which a `<form>` in a `<form>`

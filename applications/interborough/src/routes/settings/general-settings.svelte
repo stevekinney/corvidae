@@ -53,7 +53,7 @@
   import SettingField from './setting-field.svelte';
   import { SettingsAutosave } from './settings-autosave.svelte.ts';
   import { controlFor, settingLabel, type Control } from './settings-controls.ts';
-  import { formSchemaOf, numbersCommitted } from './settings-form-schema.ts';
+  import { numbersCommitted } from './settings-form-schema.ts';
   import { SettingsForm } from './settings-form.svelte.ts';
   import SettingsRestartNotice from './settings-restart-notice.svelte';
   import { SettingsRevert } from './settings-revert.svelte.ts';
@@ -96,13 +96,13 @@
   async function validate(key: string, value: unknown): Promise<string | undefined> {
     const node = schema[key];
     if (node === undefined) return undefined;
-    const result = await validateSchemaFormValue(formSchemaOf(key, node), value);
+    const result = await validateSchemaFormValue(node, value);
     return result.valid ? undefined : (result.issues[0]?.message ?? SETTINGS_COPY.invalidValue);
   }
 
   function committed(key: string, value: unknown): boolean {
     const node = schema[key];
-    return node === undefined || numbersCommitted(formSchemaOf(key, node), value);
+    return node === undefined || numbersCommitted(node, value);
   }
 
   const form = new SettingsForm(controls, (key) => stateOf(key).locked, validate, committed);
@@ -265,9 +265,12 @@
         idBase="weft-settings-advanced"
         data-testid="settings-advanced"
       >
-        {#each section.keys as key (key)}
-          {@render field(key, false)}
-        {/each}
+        <!-- A flat list has no card to pad its rows, so the list spaces them. -->
+        <FormSection columns={1}>
+          {#each section.keys as key (key)}
+            {@render field(key, false)}
+          {/each}
+        </FormSection>
       </Collapsible>
     {:else}
       <FormSection

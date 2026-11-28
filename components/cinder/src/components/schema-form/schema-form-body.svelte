@@ -6,7 +6,7 @@
   This component is NOT part of the public API. Import SchemaForm instead.
 -->
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
   import { ownEntry } from '../../_internal/own-entry.ts';
@@ -22,21 +22,21 @@
   import TagInput from '../tag-input/tag-input.svelte';
   import SegmentedControl from '../segmented-control/segmented-control.svelte';
   import Select from '../select/select.svelte';
-  import Textarea from '../textarea/textarea.svelte';
   import Toggle from '../toggle/toggle.svelte';
 
   import {
     choiceBranchForValue,
     countLeafFields,
     createSchemaFormModel,
-    blankMomentValue,
+    DURATION_NAME_SUFFIX,
+    emptyTextValue,
     fieldAtPathExists,
     getValueAtPath,
     initialValueForField,
-    isTemporalStringSchema,
     modelOptionsForVariant,
     schemaHoldsConcealedField,
     sentenceCaseLabel,
+    valueWhenSet,
     isRecord,
     pathId,
     pathKey,
@@ -116,6 +116,9 @@
     submitLabel = 'Submit',
     variant = 'default',
     submitVisible = true,
+    rootChoiceVisible = true,
+    rootRowHosted = false,
+    onRootControl,
     disabled = false,
     hosted = false,
     secrets,
@@ -235,6 +238,11 @@
     return formElement?.querySelector(`[id="${CSS.escape(fieldDomId(field))}"]`) != null;
   }
 
+  /** Whether a control must hold something: a required field does, unless `null` is a value it may hold. */
+  function mustHaveText(field: SchemaFormField): boolean {
+    return field.required && !field.nullable;
+  }
+
   function stringValue(field: SchemaFormField): string {
     const current = getValueAtPath(formState.formValue, field.path);
     return current === undefined || current === null ? '' : String(current);
@@ -270,17 +278,62 @@
    * column. Any other group, or a group of several fields, is drawn under its row as before.
    */
   function loneField(group: SchemaFormField): SchemaFormField | undefined {
-    if (group.kind !== 'object' || group.fields.length !== 1) return undefined;
+    if (group.kind !== 'object' || group.nullable || group.fields.length !== 1) return undefined;
     const [only] = group.fields;
-    return only !== undefined && INLINE_KINDS.has(only.kind) ? only : undefined;
+    return only !== undefined && (INLINE_KINDS.has(only.kind) || isChoiceLike(only))
+      ? only
+      : undefined;
   }
+
+  /** Whether a field has one control a row's control column can carry: a short control, or a choice. */
+  function carriesControl(field: SchemaFormField): boolean {
+    if (INLINE_KINDS.has(field.kind)) return true;
+    if (!isChoiceLike(field)) return false;
+    // The host draws a root union's choice itself when `rootChoiceVisible` is off.
+    return field.kind !== 'choice' || rootChoiceVisible || field.path.length > 0;
+  }
+
+  /** Whether the root's row is the host's: the form draws that row's control and body, and no row. */
+  const rootHosted = $derived(settingRows && rootRowHosted && !readOnly);
+
+  /** What a hosted root row carries: a group's lone field, else the root itself. */
+  const rootCarried = $derived(loneField(model.field) ?? model.field);
+
+  /** Whether a hosted root draws nothing where the form is mounted: its one control is all it has. */
+  const rootBodiless = $derived.by(() => {
+    if (!rootHosted || rootError !== undefined) return false;
+    const carried = rootCarried;
+    if (carried !== model.field && fieldError(carried) !== undefined) return false;
+    if (INLINE_KINDS.has(carried.kind)) return true;
+    if (carried.kind === 'choice') return !choiceAddsFields(carried);
+    return isChoiceLike(carried) && holdsNull(carried);
+  });
+
+  /** Whether the chosen alternative of a union draws anything under the choice. */
+  function choiceAddsFields(field: SchemaFormField): boolean {
+    const active = choiceBranchForValue(field, getValueAtPath(formState.formValue, field.path));
+    return active === field.fields[1] || active.options.length !== 1;
+  }
+
+  /** The root's own control for a host that draws the root's row. The model is fixed at mount. */
+  function hostedRootControl(): Snippet | undefined {
+    if (variant !== 'setting-rows' || !rootRowHosted || readOnly) return undefined;
+    const carried = loneField(initialModel.field) ?? initialModel.field;
+    return carriesControl(carried) ? rootControl : undefined;
+  }
+
+  function announceRootControl(): void {
+    if (variant === 'setting-rows' && rootRowHosted) onRootControl?.(hostedRootControl());
+  }
+  announceRootControl();
 
   /** What a setting row calls a field: the schema's title, else its key in sentence case. */
   function rowLabel(field: SchemaFormField): string {
     const title = field.schema['title'];
-    return typeof title === 'string' && title.trim().length > 0
-      ? title
-      : sentenceCaseLabel(field.key);
+    if (typeof title === 'string' && title.trim().length > 0) return title;
+    // A duration's unit is in its control, so its name does not carry it: "Timeout", not "Timeout ms".
+    const named = field.unit ? field.key.replace(DURATION_NAME_SUFFIX, '') : field.key;
+    return sentenceCaseLabel(named === '' ? field.key : named);
   }
 
   /** The words a field is named with: sentence case in the `setting-rows` variant, the model's label otherwise. */
@@ -311,6 +364,44 @@
    *  empty numeric field, so translate between the two at the binding edge. */
   function numberFieldValue(field: SchemaFormField): number | null {
     return numberValue(field) ?? null;
+  }
+
+  /** Whether a field holds `null`, which is a value of its own and not a missing property. */
+  function holdsNull(field: SchemaFormField): boolean {
+    return getValueAtPath(formState.formValue, field.path) === null;
+  }
+
+  /**
+   * Whether a field is drawn as a choice between alternatives (a union, or an object that may be
+   * `null`) with the chosen one's fields below, its control at the inline end of the title.
+   */
+  function isChoiceLike(field: SchemaFormField): boolean {
+    return field.kind === 'choice' || (field.kind === 'object' && field.nullable === true);
+  }
+
+  /** Whether a choice is on a literal that has a control of its own, which then shows the field's error. */
+  function literalControlShown(field: SchemaFormField): boolean {
+    if (field.kind !== 'choice') return false;
+    const active = choiceBranchForValue(field, getValueAtPath(formState.formValue, field.path));
+    return active !== field.fields[1] && active.options.length !== 1;
+  }
+
+  /**
+   * What an empty control says when `null` is a value it holds, so a cleared field is told apart
+   * from one nobody touched: always "Not set", in a number and in a list alike. It is never the
+   * field's description, which a row prints beside the control and a narrow control would clip.
+   */
+  function nullHint(field: SchemaFormField): string | undefined {
+    return field.nullable ? 'Not set' : undefined;
+  }
+
+  function triState(field: SchemaFormField): 'unset' | 'yes' | 'no' {
+    const current = getValueAtPath(formState.formValue, field.path);
+    return current === true ? 'yes' : current === false ? 'no' : 'unset';
+  }
+
+  function setTriState(field: SchemaFormField, next: string): void {
+    formState.updateValue(field.path, next === 'yes' ? true : next === 'no' ? false : null);
   }
 
   function rawJsonValue(field: SchemaFormField): string {
@@ -591,7 +682,7 @@
     {labelVisible}
     {description}
     error={fieldError(field)}
-    required={field.required}
+    required={mustHaveText(field)}
     disabled={frozen}
     value={secretKeyOf(getValueAtPath(formState.formValue, field.path))}
     {secrets}
@@ -599,6 +690,105 @@
       formState.updateValue(field.path, key === undefined ? undefined : { $secret: key })}
     onblur={() => formState.validateTouchedField(field)}
   />
+{/snippet}
+
+<!-- A yes or no that may also be unset: three segments, the first being the `null`. -->
+{#snippet triStateControl(
+  field: SchemaFormField,
+  id: string,
+  label: string,
+  labelVisible: boolean,
+  description?: string,
+  error?: string,
+)}
+  <SegmentedControl
+    {id}
+    {label}
+    {labelVisible}
+    {...description === undefined ? {} : { description }}
+    {...error === undefined ? {} : { error }}
+    value={triState(field)}
+    onValueChange={(next) => setTriState(field, next)}
+    disabled={frozen}
+  >
+    <Segment value="unset">Not set</Segment>
+    <Segment value="yes">Yes</Segment>
+    <Segment value="no">No</Segment>
+  </SegmentedControl>
+{/snippet}
+
+<!-- The control that chooses between the alternatives of a union, or sets an object that may be
+     `null`. It sits at the inline end, beside the field's title or a row's own. -->
+{#snippet choiceControl(field: SchemaFormField)}
+  {#if field.kind === 'choice'}
+    {@const active = choiceBranchForValue(field, getValueAtPath(formState.formValue, field.path))}
+    {@const [literalBranch, objectBranch] = field.fields}
+    {#if rootChoiceVisible || field.path.length > 0}
+      <SegmentedControl
+        id="{fieldDomId(field)}-choice"
+        label={textOf(field)}
+        labelVisible={false}
+        value={active === objectBranch ? 'object' : 'literal'}
+        onValueChange={(next) =>
+          formState.selectChoiceBranch(field, next === 'object' ? objectBranch! : literalBranch!)}
+        disabled={frozen}
+      >
+        <Segment value="literal">{literalBranch?.label}</Segment>
+        <Segment value="object">{objectBranch?.label}</Segment>
+      </SegmentedControl>
+    {/if}
+  {:else}
+    <SegmentedControl
+      id="{fieldDomId(field)}-choice"
+      label={textOf(field)}
+      labelVisible={false}
+      value={holdsNull(field) ? 'unset' : 'set'}
+      onValueChange={(next) =>
+        formState.setNullable(field, next === 'set' ? valueWhenSet(field) : null)}
+      disabled={frozen}
+    >
+      <Segment value="unset">Not set</Segment>
+      <Segment value="set">Set</Segment>
+    </SegmentedControl>
+  {/if}
+{/snippet}
+
+<!-- What the chosen alternative adds under the choice: its fields, or a literal's own control. -->
+{#snippet choiceBody(field: SchemaFormField)}
+  {#if field.kind === 'choice'}
+    {@const active = choiceBranchForValue(field, getValueAtPath(formState.formValue, field.path))}
+    {@const [, objectBranch] = field.fields}
+    {#if active === objectBranch}
+      <div class="cinder-schema-form__choice-body">{@render renderFields(active.fields)}</div>
+    {:else if active.options.length !== 1}
+      <div class="cinder-schema-form__choice-body">{@render renderField(active)}</div>
+    {/if}
+  {:else if !holdsNull(field)}
+    <div class="cinder-schema-form__choice-body">{@render renderFields(field.fields)}</div>
+  {/if}
+{/snippet}
+
+<!-- A list that may be `null` says so while it is, and offers one action that returns it there. -->
+{#snippet nullableClear(field: SchemaFormField)}
+  <!-- A tag input says "Not set" in its own empty input, as an empty number does, so it adds no
+       line. Chips and item rows have no input to say it, so they do. -->
+  {#if field.nullable && !(field.kind === 'tags' && holdsNull(field))}
+    <div class="cinder-schema-form__unset">
+      {#if holdsNull(field)}
+        <span>Not set</span>
+      {:else}
+        <button
+          type="button"
+          class="cinder-schema-form__secondary-button"
+          aria-label={`Clear ${textOf(field)}`}
+          disabled={frozen}
+          onclick={() => formState.setNullable(field, null)}
+        >
+          Clear
+        </button>
+      {/if}
+    </div>
+  {/if}
 {/snippet}
 
 {#snippet settingControl(field: SchemaFormField, id: string)}
@@ -611,16 +801,12 @@
       variant="code"
       type={field.schema['writeOnly'] === true ? 'password' : 'text'}
       autocomplete={field.schema['writeOnly'] === true ? 'off' : undefined}
-      required={field.required}
+      required={mustHaveText(field)}
       disabled={frozen}
       onblur={() => formState.validateTouchedField(field)}
       bind:value={
         () => stringValue(field),
-        (next) =>
-          formState.updateValue(
-            field.path,
-            next === '' && isTemporalStringSchema(field.schema) ? blankMomentValue(field) : next,
-          )
+        (next) => formState.updateValue(field.path, next === '' ? emptyTextValue(field) : next)
       }
     />
   {:else if field.kind === 'enum'}
@@ -628,13 +814,15 @@
       {id}
       label={rowLabel(field)}
       labelVisible={false}
-      required={field.required}
+      required={mustHaveText(field)}
       disabled={frozen}
       options={selectOptions(field)}
       value={enumValue(field)}
       onchange={(event) => formState.updateEnum(field, event)}
       onblur={() => formState.validateTouchedField(field)}
     />
+  {:else if field.kind === 'boolean' && field.nullable}
+    {@render triStateControl(field, id, rowLabel(field), false)}
   {:else if field.kind === 'boolean'}
     <Toggle
       {id}
@@ -645,9 +833,10 @@
   {:else if (field.kind === 'number' || field.kind === 'integer') && field.unit}
     <DurationField
       {id}
-      required={field.required}
+      required={mustHaveText(field)}
       disabled={frozen}
       integer={field.kind === 'integer'}
+      placeholder={nullHint(field)}
       value={numberFieldValue(field)}
       onValueChange={(next) => formState.updateNumberValue(field, next)}
       onblur={() => formState.validateTouchedField(field)}
@@ -655,8 +844,9 @@
   {:else if field.kind === 'number' || field.kind === 'integer'}
     <NumberInput
       {id}
-      required={field.required}
+      required={mustHaveText(field)}
       disabled={frozen}
+      placeholder={nullHint(field)}
       step={field.kind === 'integer' ? 1 : undefined}
       onblur={() => formState.validateTouchedField(field)}
       value={numberFieldValue(field)}
@@ -671,18 +861,22 @@
   {#if field.kind === 'object'}
     {@render renderFields(field.fields)}
   {:else if field.kind === 'array'}
-    <div class="cinder-schema-form__setting-body">{@render arrayBody(field)}</div>
+    <div class="cinder-schema-form__setting-body">
+      {@render arrayBody(field)}
+      {@render nullableClear(field)}
+    </div>
   {:else if field.kind === 'tags'}
     <TagInput
       aria-label={rowLabel(field)}
       value={stringArrayValue(field)}
-      placeholder="Add a value"
+      placeholder={field.nullable && holdsNull(field) ? 'Not set' : 'Add a value'}
       duplicateValuesAllowed={field.schema['uniqueItems'] !== true}
       commitOnSubmit
       disabled={frozen}
       onValueChange={(next) => formState.updateValue(field.path, next)}
       onblur={() => formState.validateTouchedField(field)}
     />
+    {@render nullableClear(field)}
   {:else if field.kind === 'enumArray'}
     <div role="group" aria-label={rowLabel(field)}>
       <SchemaFormChips
@@ -692,6 +886,7 @@
         onValueChange={(next) => formState.updateValue(field.path, next)}
       />
     </div>
+    {@render nullableClear(field)}
   {:else if field.kind === 'record'}
     <fieldset class="cinder-schema-form__bare-fieldset" disabled={frozen}>
       <SchemaFormRecord
@@ -700,15 +895,13 @@
         onValueChange={(next) => formState.updateRecordEntries(field, next)}
       />
     </fieldset>
-  {:else if field.kind === 'choice'}
-    {@render renderField(field)}
   {:else if field.kind === 'json'}
     <JsonEditor
       {id}
       label={`${rowLabel(field)} as JSON`}
       rows={5}
       validFeedbackVisible={false}
-      required={field.required}
+      required={mustHaveText(field)}
       disabled={frozen}
       {...error === undefined ? {} : { error }}
       onblur={() => formState.validateTouchedField(field)}
@@ -725,6 +918,7 @@
   {@const rowId = lone ? `${id}-group` : id}
   {@const error = fieldError(carried)}
   {@const inline = INLINE_KINDS.has(carried.kind)}
+  {@const choiceLike = isChoiceLike(carried)}
   {@const identifier = rowIdentifier(field)}
   {@const description = field.description ?? lone?.description}
   <div
@@ -742,13 +936,19 @@
       {...identifier === undefined ? {} : { identifier }}
       required={carried.required}
       disabled={frozen}
-      controlWidth={carried.kind === 'boolean' ? 'auto' : '16rem'}
-      controlAlign={carried.kind === 'boolean' ? 'end' : 'stretch'}
+      controlWidth={(carried.kind === 'boolean' && !carried.nullable) || choiceLike
+        ? 'auto'
+        : '16rem'}
+      controlAlign={(carried.kind === 'boolean' && !carried.nullable) || choiceLike
+        ? 'end'
+        : 'stretch'}
       {...description === undefined ? {} : { description }}
       {...error === undefined ? {} : { error }}
     >
       {#snippet control()}
-        {#if lone}
+        {#if choiceLike}
+          {@render choiceControl(carried)}
+        {:else if lone}
           <SchemaFormNamedControl
             {id}
             label={rowLabel(lone)}
@@ -761,10 +961,61 @@
         {/if}
       {/snippet}
       {#snippet disclosure()}
-        {#if !inline}{@render settingDisclosure(field, id, error)}{/if}
+        {#if choiceLike}
+          {@render choiceBody(carried)}
+        {:else if !inline}
+          {@render settingDisclosure(field, id, error)}
+        {/if}
       {/snippet}
     </SettingRow>
   </div>
+{/snippet}
+
+<!-- The one control of a root whose row is the host's (`rootRowHosted`). The host draws it in its
+     row's control column, and its row names it, so the control is named for assistive technology
+     only, as a group's lone field is in a row of the form's own. -->
+{#snippet rootControl()}
+  {@const carried = rootCarried}
+  {@const id = fieldDomId(carried)}
+  <div
+    class="cinder-schema-form__root-control"
+    oninput={INLINE_KINDS.has(carried.kind)
+      ? (event) => formState.handleFieldInput(carried, event)
+      : undefined}
+  >
+    {#if isChoiceLike(carried)}
+      {@render choiceControl(carried)}
+    {:else}
+      <SchemaFormNamedControl
+        {id}
+        label={rowLabel(carried)}
+        named={carried.kind !== 'enum' && carried.kind !== 'secret'}
+      >
+        {@render settingControl(carried, id)}
+      </SchemaFormNamedControl>
+    {/if}
+  </div>
+{/snippet}
+
+<!-- What a hosted root draws where the form is mounted, under the host row's text: the fields of a
+     group with several, the fields a chosen alternative adds, and a lone field's own message. -->
+{#snippet rootBody()}
+  {@const carried = rootCarried}
+  {@const id = fieldDomId(carried)}
+  {@const error =
+    carried === model.field && carried.kind === 'object' ? undefined : fieldError(carried)}
+  {#if error && !literalControlShown(carried)}
+    <p id="{id}-error" class="cinder-schema-form__error" aria-live="polite" tabindex="-1">
+      {error}
+    </p>
+  {/if}
+  {#if isChoiceLike(carried)}
+    {@render choiceBody(carried)}
+  {:else if carried.kind === 'object'}
+    {@render renderFields(rootFields)}
+  {:else if !INLINE_KINDS.has(carried.kind)}
+    {@render settingDisclosure(carried, id, error)}
+  {/if}
 {/snippet}
 
 {#snippet renderFields(fields: SchemaFormField[])}
@@ -788,7 +1039,43 @@
     ...(error !== undefined ? { error } : {}),
   }}
 
-  {#if field.kind === 'object' && largeForm && !hosted}
+  {#if isChoiceLike(field)}
+    <!-- Flat, in the page's own rhythm: the title and its control share one line (the control at the
+         inline end), and what the chosen alternative adds sits below with no box around it. A
+         root choice has no title of its own, because a page or a row already names it. -->
+    <div
+      class="cinder-schema-form__choice"
+      role="group"
+      aria-label={textOf(field)}
+      data-cinder-span={span}
+      data-cinder-root-choice={field.path.length === 0 ? '' : undefined}
+    >
+      <!-- A root choice whose own control is not drawn has nothing in its header, and an empty
+           header would still take the choice's gap above what the chosen alternative adds. -->
+      {#if field.kind !== 'choice' || field.path.length > 0 || rootChoiceVisible}
+        <div class="cinder-schema-form__choice-header">
+          {#if field.path.length > 0}
+            <span class="cinder-schema-form__legend">
+              {textOf(field)}
+              {#if field.required}
+                <span class="cinder-_required-marker" aria-hidden="true"></span>
+              {/if}
+            </span>
+          {/if}
+          <div class="cinder-schema-form__choice-control">{@render choiceControl(field)}</div>
+        </div>
+      {/if}
+      {#if field.description}
+        <p id="{id}-description" class="cinder-schema-form__description">{field.description}</p>
+      {/if}
+      {#if error && !literalControlShown(field)}
+        <p id="{id}-error" class="cinder-schema-form__error" aria-live="polite" tabindex="-1">
+          {error}
+        </p>
+      {/if}
+      {@render choiceBody(field)}
+    </div>
+  {:else if field.kind === 'object' && largeForm && !hosted}
     <Collapsible
       idBase={id}
       class="cinder-schema-form__group"
@@ -824,31 +1111,6 @@
       {@render groupLegend(field)}
       {@render renderFields(field.fields)}
     </fieldset>
-  {:else if field.kind === 'choice'}
-    {@const active = choiceBranchForValue(field, getValueAtPath(formState.formValue, field.path))}
-    {@const [literalBranch, objectBranch] = field.fields}
-    {@const activeIsObject = active === objectBranch}
-    {@const literalHasControl = !activeIsObject && active.options.length !== 1}
-    <fieldset class="cinder-schema-form__fieldset" data-cinder-span={span}>
-      {@render groupLegend(field, !literalHasControl)}
-      <SegmentedControl
-        id="{id}-choice"
-        label={textOf(field)}
-        labelVisible={false}
-        value={activeIsObject ? 'object' : 'literal'}
-        onValueChange={(next) =>
-          formState.selectChoiceBranch(field, next === 'object' ? objectBranch! : literalBranch!)}
-        disabled={frozen}
-      >
-        <Segment value="literal">{literalBranch?.label}</Segment>
-        <Segment value="object">{objectBranch?.label}</Segment>
-      </SegmentedControl>
-      {#if activeIsObject}
-        {@render renderFields(active.fields)}
-      {:else if literalHasControl}
-        {@render renderField(active)}
-      {/if}
-    </fieldset>
   {:else if field.kind === 'enumArray'}
     <fieldset class="cinder-schema-form__fieldset" data-cinder-span={span}>
       {@render groupLegend(field)}
@@ -858,6 +1120,7 @@
         disabled={frozen}
         onValueChange={(next) => formState.updateValue(field.path, next)}
       />
+      {@render nullableClear(field)}
     </fieldset>
   {:else if field.kind === 'record'}
     <fieldset class="cinder-schema-form__fieldset" data-cinder-span={span} disabled={frozen}>
@@ -872,6 +1135,7 @@
     <fieldset class="cinder-schema-form__fieldset" data-cinder-span={span}>
       {@render groupLegend(field)}
       {@render arrayBody(field)}
+      {@render nullableClear(field)}
     </fieldset>
   {:else}
     <div
@@ -887,18 +1151,12 @@
           {...hosted ? { size: 'sm' } : {}}
           type={field.schema['writeOnly'] === true ? 'password' : 'text'}
           autocomplete={field.schema['writeOnly'] === true ? 'off' : undefined}
-          required={field.required}
+          required={mustHaveText(field)}
           disabled={frozen}
           onblur={() => formState.validateTouchedField(field)}
           bind:value={
             () => stringValue(field),
-            (next) =>
-              formState.updateValue(
-                field.path,
-                next === '' && isTemporalStringSchema(field.schema)
-                  ? blankMomentValue(field)
-                  : next,
-              )
+            (next) => formState.updateValue(field.path, next === '' ? emptyTextValue(field) : next)
           }
         />
       {:else if field.kind === 'secret'}
@@ -909,14 +1167,16 @@
           label={textOf(field)}
           description={field.description}
           {error}
-          required={field.required}
+          required={mustHaveText(field)}
           disabled={frozen}
           value={stringArrayValue(field)}
           draft={formState.tagDraft(field)}
+          placeholder={field.nullable && holdsNull(field) ? 'Not set' : undefined}
           duplicateValuesAllowed={field.schema['uniqueItems'] !== true}
           onValueChange={(next) => formState.updateValue(field.path, next)}
           onblur={() => formState.validateTouchedField(field)}
         />
+        {@render nullableClear(field)}
       {:else if (field.kind === 'number' || field.kind === 'integer') && field.unit}
         <DurationField
           {id}
@@ -924,9 +1184,10 @@
           label={textOf(field)}
           description={field.description}
           {error}
-          required={field.required}
+          required={mustHaveText(field)}
           disabled={frozen}
           integer={field.kind === 'integer'}
+          placeholder={nullHint(field)}
           value={numberValue(field)}
           onValueChange={(next) => formState.updateNumberValue(field, next)}
           onblur={() => formState.validateTouchedField(field)}
@@ -936,8 +1197,9 @@
           {id}
           {...labelledProps}
           {...hosted ? { size: 'sm' } : {}}
-          required={field.required}
+          required={mustHaveText(field)}
           disabled={frozen}
+          placeholder={nullHint(field)}
           step={field.kind === 'integer' ? 1 : undefined}
           onblur={() => formState.validateTouchedField(field)}
           value={numberFieldValue(field)}
@@ -948,13 +1210,15 @@
           {id}
           {...labelledProps}
           {...hosted ? { size: 'sm' } : {}}
-          required={field.required}
+          required={mustHaveText(field)}
           disabled={frozen}
           options={selectOptions(field)}
           value={enumValue(field)}
           onchange={(event) => formState.updateEnum(field, event)}
           onblur={() => formState.validateTouchedField(field)}
         />
+      {:else if field.kind === 'boolean' && field.nullable}
+        {@render triStateControl(field, id, textOf(field), true, field.description, error)}
       {:else if field.kind === 'boolean'}
         <!-- A required boolean schema property means "the value must be present",
              not "the box must be checked". Native checkbox `required` would block
@@ -981,31 +1245,17 @@
             }
           />
         {/if}
-      {:else if variant === 'input'}
+      {:else}
+        <!-- Raw JSON is one editor in every variant, a Cinder JsonEditor. -->
         <JsonEditor
           {id}
           {...labelledProps}
-          required={field.required}
+          required={mustHaveText(field)}
           disabled={frozen}
           statusLabel={jsonStatusLabel(field)}
           onblur={() => formState.validateTouchedField(field)}
           value={rawJsonValue(field)}
           onValueChange={(next) => formState.updateRawJsonValue(field, next)}
-        />
-      {:else}
-        <Textarea
-          {id}
-          {...labelledProps}
-          required={field.required}
-          disabled={frozen}
-          rows={6}
-          spellcheck={false}
-          variant="code"
-          class="cinder-schema-form__json-control"
-          onblur={() => formState.validateTouchedField(field)}
-          bind:value={
-            () => rawJsonValue(field), (next) => formState.updateRawJsonValue(field, next)
-          }
         />
       {/if}
     </div>
@@ -1021,6 +1271,8 @@
   data-cinder-hosted={hosted ? '' : undefined}
   data-cinder-read-only={readOnly ? '' : undefined}
   data-cinder-variant={settingRows ? 'setting-rows' : undefined}
+  data-cinder-root-row={rootHosted ? 'host' : undefined}
+  data-cinder-root-body={rootBodiless ? 'none' : undefined}
   role={bare ? 'group' : undefined}
   novalidate={bare ? undefined : (novalidate ?? true)}
   onsubmit={bare ? undefined : handleSubmit}
@@ -1079,7 +1331,9 @@
       <p class="cinder-schema-form__description" role="status">No fields match your search.</p>
     {/if}
 
-    {#if settingRows && model.field.kind === 'object'}
+    {#if rootHosted}
+      {@render rootBody()}
+    {:else if settingRows && model.field.kind === 'object'}
       <div class="cinder-schema-form__setting-rows">
         {#each rootFields as field (pathKey(field.path))}
           {@render settingRow(field)}

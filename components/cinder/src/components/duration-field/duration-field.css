@@ -11,16 +11,76 @@
  * ======================================== */
 
   .cinder-duration-field {
-    display: grid;
-    /* NumberInput caps its actual control at 10rem. Keep this track bounded to that same size, so
-     * the unit follows the number on a wide settings row while still yielding its space when the
-     * field is squeezed. */
-    grid-template-columns: minmax(0, 10rem) auto;
-    align-items: end;
+    /* The pair is number-first at the start of its row. The number's basis is the least it can be
+     * (see the sizer below) and it grows to NumberInput's own 10rem cap; the unit is never narrower
+     * than its longest option, so it is never clipped ("m.." for "min"). A row that holds the least
+     * number, the gap and the unit keeps them on one line. A row that cannot wraps the unit onto
+     * its own line under the number, at the leading edge, so neither part is cut and nothing runs
+     * past the row's end. */
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: flex-end;
     gap: var(--cinder-space-2);
   }
 
+  /* The basis is the frame's own least width, which the sizer sets. The frame keeps its full width
+   * and its cap, so a parent that sizes to its content still sees a 10rem number. A row narrower
+   * than the number alone shrinks it, and the slot gives way before anything leaves the row. */
+  .cinder-duration-field:not([data-cinder-fixed-unit]) > .cinder-number-input-field {
+    flex: 1 1 min-content;
+    min-inline-size: 0;
+  }
+
+  /* The sizer: the text the slot must always show whole, measured by the browser in the input's
+   * font. It is two digits, and the placeholder's words when the field has one ("Not set" for a
+   * number that may be unset), each on its own line so the wider one counts. Its padding is the
+   * rest of the frame plus 2px for the caret. It is as wide as the frame, has no height and paints
+   * nothing; the margin takes back the column gap it would add. The floor follows what the field
+   * can show, never what it shows now, so the unit does not change lines while someone types. No
+   * width of a text is typed in here: fonts differ ("Not set" is 44px in one system font and 41px
+   * in another). */
+  .cinder-duration-field:not([data-cinder-fixed-unit]) > .cinder-number-input-field::after {
+    content: '00\A' attr(data-cinder-placeholder-text);
+    display: block;
+    block-size: 0;
+    margin-block-start: calc(-1 * var(--cinder-space-1-5));
+    padding-inline-end: calc(var(--_cinder-number-input-chrome) + var(--cinder-space-0-5));
+    overflow: hidden;
+    visibility: hidden;
+    white-space: pre;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    font-style: normal;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  /* The unit is as wide as its longest option and never stretches: an `auto` width would take the
+   * row's slack, and the select with it. */
+  .cinder-duration-field:not([data-cinder-fixed-unit]) > :last-child:not(:first-child) {
+    flex: 0 0 auto;
+    inline-size: max-content;
+    max-inline-size: 100%;
+  }
+
   .cinder-duration-field[data-cinder-fixed-unit] {
+    display: grid;
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The control of a settings row that fills its column (`controlAlign="stretch"`): the pair fills
+   * the column too. The number takes the slack, past NumberInput's 10rem cap, so the unit ends on
+   * the column's inline end with the row's siblings. Only while the row has a control column: under
+   * the row's container width the control stacks under the label and keeps the compact,
+   * number-first pair. A pair inside a wrapper, or in a row whose control sits at the end, is not
+   * matched and keeps its own width. */
+  @container (inline-size >= 30rem) {
+    .cinder-setting-row[data-cinder-control-align='stretch']
+      > .cinder-setting-row__field
+      > .cinder-duration-field:not([data-cinder-fixed-unit])
+      > .cinder-number-input-field {
+      max-inline-size: none;
+    }
   }
 }

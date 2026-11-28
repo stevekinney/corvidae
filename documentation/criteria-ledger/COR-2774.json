@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2774",
+  "branch": "chef/schemaform",
+  "checkedAt": "188142781d02594e35ed55d8473be084331182ca",
+  "briefVersion": "c1d6cfbfef0b",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "settings-form-schema.ts no longer converts; the settings call sites validate the published node; the settings-form-schema.test.ts table is red on main for 3 cells and green here."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Cinder reads anyOf or oneOf as the choice, in words and flat, every choice control placed where its form puts controls (schema-form-choices.test.ts); every nullable kind starts as null and sets back to null through a control of its kind, with one Not set placeholder."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Unsupported shapes stay raw JSON in one JsonEditor in every variant; uncommitted numbers are held by numbersCommitted; the duration unit is unit: milliseconds on the Bureau olderThan field schemas, and a duration is labelled without its unit; workflow-input-nullable.test.ts runs the Zod probe schema end to end."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Row titles, description placement, switch and save unchanged; a lone field or lone choice hands its control to the host row (rootRowHosted, onRootControl), tested in schema-form-setting-rows.test.ts and general-settings.test.ts; retention-page.test.ts covers the checkpoints row body."
+    },
+    {
+      "id": "AC5",
+      "status": "not-met",
+      "evidence": "Not captured by design: captures and browser suites are never run on this host. The duration-field alignment fixture (now with phone-card, phone-card-not-set and squeezed-not-set rows) and duration-field-alignment.playwright.ts, schema-form.playwright.ts and tests/e2e/schema-form-states.spec.ts are implemented for the coordinator to run; the escalation design's width fix is not yet verified in a browser."
+    }
+  ]
+}

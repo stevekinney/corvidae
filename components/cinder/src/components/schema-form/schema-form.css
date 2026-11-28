@@ -102,6 +102,80 @@
     gap: var(--cinder-space-2);
   }
 
+  /* A choice between alternatives is flat: its title and its control share a line, the control at
+     the inline end, and what the chosen alternative adds sits below it with no box around it. */
+  .cinder-schema-form__choice {
+    display: grid;
+    /* The alternative's fields are the choice's own, so they sit close under it and end with the
+       row's own block-end spacing, which separates the choice from whatever follows. */
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  /* What the chosen alternative adds ends with the spacing a row ends with, so its fields read as
+     part of their choice and not as the start of the next row. A choice that adds nothing has no
+     body, so it adds no space. */
+  .cinder-schema-form__choice-body {
+    display: grid;
+    gap: var(--cinder-space-3);
+    padding-block-end: var(--cinder-space-3);
+  }
+
+  /* The body that ends a settings row is the row's own tail: the list the row sits in spaces it
+     from the next row, as it spaces a row with no body, so the body adds nothing of its own. */
+  .cinder-setting-row > .cinder-schema-form__choice-body,
+  .cinder-schema-form[data-cinder-root-row] > .cinder-schema-form__choice-body {
+    padding-block-end: 0;
+  }
+
+  /* A form that is one root choice has nothing after the body but the host's own spacing (and the
+     form's gap above its submit button), so the body adds none: a host that draws this form in a
+     row of its own (Interborough's checkpoints) ends the row with its list's spacing. */
+  .cinder-schema-form__choice[data-cinder-root-choice] > .cinder-schema-form__choice-body {
+    padding-block-end: 0;
+  }
+
+  /* A form whose root is a host's own row (`rootRowHosted`) draws only that row's body where it is
+     mounted. With nothing to draw there (the root's one control is in the host's control column)
+     it takes no room, so the row is as tall as a row with no body. */
+  .cinder-schema-form[data-cinder-root-body='none'] {
+    display: none;
+  }
+
+  /* The root's one control, in the host row's control column. It is sized by that column, as any
+     control the host wraps is. */
+  .cinder-schema-form__root-control {
+    min-inline-size: 0;
+  }
+
+  /* A plain form puts a control under its label, at the leading edge: the same place as every
+     other control in it, whatever the width. A settings row puts it in the control column instead
+     (`SchemaForm` draws that one itself). */
+  .cinder-schema-form__choice-header {
+    display: grid;
+    justify-items: start;
+    gap: var(--cinder-space-2);
+  }
+
+  /* The title is a plain line, not a fieldset's legend, so it starts where its siblings' labels do. */
+  .cinder-schema-form__choice-header .cinder-schema-form__legend {
+    padding-inline: 0;
+  }
+
+  .cinder-schema-form__choice-control {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
+  /* What a list that may be `null` says while it is, or the one action that returns it there. */
+  .cinder-schema-form__unset {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
   /* Group-level (object/array fieldset) description and error. Leaf-field
      supporting text is owned by the composed cinder controls themselves. */
   .cinder-schema-form__description {
@@ -114,13 +188,6 @@
     margin: 0;
     color: var(--cinder-status-danger-text);
     font-size: var(--cinder-text-sm);
-  }
-
-  /* JSON drafts edit raw text — the composed Textarea's `variant="code"`
-     supplies the monospace metrics; this class only owns sizing/resize. */
-  .cinder-schema-form__json-control {
-    min-block-size: 8rem;
-    resize: vertical;
   }
 
   .cinder-schema-form__array-item {
@@ -136,6 +203,7 @@
   .cinder-schema-form[data-cinder-hosted] .cinder-schema-form__fieldset {
     padding: 0;
     padding-inline-start: var(--cinder-space-3);
+    padding-block-end: var(--cinder-space-3);
     border: 0;
     border-radius: 0;
   }
@@ -205,6 +273,9 @@
   .cinder-schema-form[data-cinder-variant='setting-rows'] .cinder-schema-form__fieldset {
     padding: 0;
     padding-inline-start: var(--cinder-space-3);
+    /* The group ends with the spacing a choice's body does, so its children sit with their parent
+       and not against the next row's title. */
+    padding-block-end: var(--cinder-space-3);
     border: 0;
     border-radius: 0;
   }

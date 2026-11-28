@@ -47,7 +47,13 @@ const humanInputSetting = z.union([
     }),
 ]);
 
-const olderThanWindow = z.object({ olderThan: nonNegativeMilliseconds }).strict();
+/**
+ * How long a record is kept, in milliseconds. The unit is on the field's own schema (`unit`), so a
+ * form draws `olderThan` as a length of time without knowing the field by its name.
+ */
+const olderThanMilliseconds = nonNegativeMilliseconds.meta({ unit: 'milliseconds' });
+const olderThanPositiveInteger = z.number().int().positive().meta({ unit: 'milliseconds' });
+const olderThanWindow = z.object({ olderThan: olderThanMilliseconds }).strict();
 const retentionWindow = z.union([z.literal('forever'), olderThanWindow]);
 /**
  * Operative's `ProviderName`: any name in the provider-name grammar. A stored name no loaded
@@ -189,29 +195,29 @@ export const settingsSchema = z
     ),
     'retention.tasks': retentionWindow.describe('How long a finished task is kept.'),
     'retention.receipts': z
-      .object({ olderThan: z.number().int().positive() })
+      .object({ olderThan: olderThanPositiveInteger })
       .strict()
       .describe(
         'How long the record that a run was started is kept, so the same request sent again starts no second run.',
       ),
     'retention.memory': z
-      .object({ olderThan: z.number().int().positive() })
+      .object({ olderThan: olderThanPositiveInteger })
       .strict()
       .describe('Memories an agent saved. Agents can correct them.'),
     'retention.logs': z
-      .object({ olderThan: z.number().int().positive() })
+      .object({ olderThan: olderThanPositiveInteger })
       .strict()
       .describe(
         'How long a finished run keeps its log lines after it last wrote one. A run that is still going keeps them.',
       ),
     'retention.notifications': z
-      .object({ olderThan: z.number().int().positive() })
+      .object({ olderThan: olderThanPositiveInteger })
       .strict()
       .describe(
         'How long a notification is kept, read or not. Unset, the newest 1,000 for each person are kept.',
       ),
     'retention.hookDeliveries': z
-      .object({ olderThan: z.number().int().positive() })
+      .object({ olderThan: olderThanPositiveInteger })
       .strict()
       .describe(
         'How long the record of a finished hook delivery is kept. A delivery still being tried is never removed. Unset, the records are kept until their hook is deleted.',
@@ -274,7 +280,9 @@ export const settingsSchema = z
     'engine.payloadSize': z
       .object({ maxBytes: nonNegativeInteger.nullable().optional() })
       .strict()
-      .describe('The largest input or result a run accepts. No limit removes the cap.'),
+      .describe(
+        'The largest input or result a run accepts, in bytes. Leave it not set for no cap.',
+      ),
     'engine.checkpointSizeWarningThreshold': positiveInteger.describe(
       'The size of a saved point above which a warning is shown.',
     ),

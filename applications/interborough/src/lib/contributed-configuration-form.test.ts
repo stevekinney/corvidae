@@ -199,3 +199,80 @@ describe('the form of a contributed kind', () => {
     expect(getByText(PLUGIN_KINDS_COPY.noFields)).toBeTruthy();
   });
 });
+
+describe('the form of a contributed kind, given the schema a plugin published', () => {
+  /** What Zod writes for a union, a nullable number and a duration, as it wrote them. */
+  const PUBLISHED = {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    properties: {
+      keep: {
+        anyOf: [
+          { type: 'string', const: 'forever' },
+          {
+            type: 'object',
+            properties: { olderThan: { type: 'number', minimum: 0, unit: 'milliseconds' } },
+            required: ['olderThan'],
+            additionalProperties: false,
+          },
+        ],
+      },
+      limit: { anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }] },
+    },
+    required: ['keep'],
+  };
+
+  test('draws a union as a choice, not as JSON, and a nullable number as a number', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    const { container, getByRole } = render(ContributedConfigurationForm, {
+      props: {
+        kindId: 'archive:store',
+        schema: PUBLISHED,
+        onChange: (next) => received.push(next),
+      },
+    });
+    expect(container.querySelector('textarea')).toBeNull();
+    expect(getByRole('radio', { name: 'Forever' }).getAttribute('aria-checked')).toBe('true');
+    expect(container.querySelector('input[inputmode="decimal"]')).not.toBeNull();
+    await waitFor(() => expect(received.at(-1)).toMatchObject({ keep: 'forever' }));
+  });
+
+  test('draws the duration the plugin’s own schema marks, in units, and reports milliseconds', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    const { getByRole, getByLabelText } = render(ContributedConfigurationForm, {
+      props: {
+        kindId: 'archive:store',
+        schema: PUBLISHED,
+        value: { keep: { olderThan: 90_000 } },
+        onChange: (next) => received.push(next),
+      },
+    });
+    expect((getByLabelText(/unit/i) as HTMLSelectElement).value).toBe('s');
+    await fireEvent.click(getByRole('radio', { name: 'Forever' }));
+    await waitFor(() => expect(received.at(-1)).toMatchObject({ keep: 'forever' }));
+  });
+
+  test('reports a cleared nullable number as null, and holds back what is still being typed', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    let pending = 0;
+    const { container } = render(ContributedConfigurationForm, {
+      props: {
+        kindId: 'archive:store',
+        schema: PUBLISHED,
+        value: { keep: 'forever', limit: 4096 },
+        onChange: (next) => received.push(next),
+        onPending: () => (pending += 1),
+      },
+    });
+    const limit = container.querySelector<HTMLInputElement>('input[inputmode="decimal"]');
+    if (limit === null) throw new Error('The number field is missing.');
+    await fireEvent.focus(limit);
+    await fireEvent.input(limit, { target: { value: '1e' } });
+    await waitFor(() => expect(pending).toBeGreaterThan(0));
+    expect(received.every((value) => typeof value['limit'] !== 'string')).toBe(true);
+
+    await fireEvent.input(limit, { target: { value: '' } });
+    await fireEvent.blur(limit);
+    await waitFor(() => expect(received.at(-1)).toEqual({ keep: 'forever', limit: null }));
+  });
+});

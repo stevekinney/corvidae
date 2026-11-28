@@ -292,13 +292,22 @@
       : undefined,
   );
 
-  function onFocus() {
+  function onFocus(event: FocusEvent & { currentTarget: EventTarget & HTMLInputElement }) {
     // Preserve the editor buffer when re-focusing after a malformed blur so
     // the user can correct their own text instead of having it disappear.
     if (!malformedError) {
       editorBuffer = value === null || value === undefined ? '' : buildEditDisplay(value);
     }
     isFocused = true;
+    // The text shown for editing (`4096` for `4,096`) replaces the shown text now, and the whole of
+    // it is selected. A browser puts the caret at the end of text a script writes, and it cannot be
+    // asked here what was selected: for `select()` and for a pointer press it applies the selection
+    // after this event. A press still places its caret afterwards; a Tab or a script's `select()`
+    // (a test's `fill`) leaves the whole text selected, so the next key replaces or deletes it.
+    const input = event.currentTarget;
+    if (input.value === editorBuffer) return;
+    input.value = editorBuffer;
+    input.setSelectionRange(0, editorBuffer.length);
   }
 
   /**
@@ -480,9 +489,12 @@
   {@render steppers()}
 {/snippet}
 
+<!-- The placeholder's words are on the wrapper as well, where CSS can read them: a parent that
+     sizes the number to its content (DurationField) measures the slot's floor from them. -->
 <div
   class={classNames('cinder-input-field cinder-number-input-field', className)}
   data-cinder-full-width
+  data-cinder-placeholder-text={rest.placeholder ? rest.placeholder : undefined}
 >
   <Input
     {id}

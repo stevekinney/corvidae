@@ -54,6 +54,12 @@ export type SchemaFormField = {
   unit?: 'milliseconds';
   /** Set on an optional `enum` field that starts unset and offers an empty choice to clear it. */
   clearable?: true;
+  /**
+   * Set on a `number`, `integer` or `enum` field whose schema also allows `null` (`type: [..,
+   * "null"]`, or an `anyOf` or `oneOf` of the field and `{ "type": "null" }`). Clearing the field
+   * sets an explicit `null`, which is not the same value as a property that is missing.
+   */
+  nullable?: true;
 };
 
 /**
@@ -127,29 +133,87 @@ function fieldFromJsonSchema(
     return baseField('json', {}, path, key, required);
   }
 
-  const normalizedSchema = schema;
+  // A field that is a value or `null` is drawn as the value, and it starts as, and is set back to,
+  // `null`: an empty control stands for it where there is one, and a choice or a clear action does
+  // where there is not. A shape that has neither is raw JSON, where `null` is typed.
+  const withoutNull = withoutNullAlternative(schema);
+  const normalizedSchema = withoutNull ?? schema;
+  const nullable = withoutNull !== undefined || typeAllowsNull(normalizedSchema);
+  const field = fieldOfSchema(normalizedSchema, nullable, path, key, required, modelOptions);
+  if (!nullable || field.nullable === true || NULL_UNCHANGED_KINDS.has(field.kind)) return field;
+  if (holdsNullAsItsOwnValue(field)) return { ...field, nullable: true };
+  return { ...baseField('json', normalizedSchema, path, key, required), nullable: true };
+}
+
+/** The kinds that hold `null` as a value of their own when their schema allows it. */
+const NULLABLE_KINDS: ReadonlySet<SchemaFormFieldKind> = new Set([
+  'string',
+  'number',
+  'integer',
+  'boolean',
+  'object',
+  'tags',
+  'enumArray',
+]);
+
+/** The kinds of item a list may hold and still be set back to `null` by a Clear action. */
+const SIMPLE_ITEM_KINDS: ReadonlySet<SchemaFormFieldKind> = new Set([
+  'string',
+  'number',
+  'integer',
+  'boolean',
+  'enum',
+]);
+
+/**
+ * Whether a field has a control that can stand for `null`: an empty control, a choice or a Clear
+ * action. An object needs fields to draw, and a list needs items a list control can edit.
+ */
+function holdsNullAsItsOwnValue(field: SchemaFormField): boolean {
+  if (field.kind === 'object') return field.fields.length > 0;
+  if (field.kind === 'array')
+    return field.item !== undefined && SIMPLE_ITEM_KINDS.has(field.item.kind);
+  return NULLABLE_KINDS.has(field.kind);
+}
+
+/** The kinds that already offer `null` in their own way: an option, or a reference to a secret. */
+const NULL_UNCHANGED_KINDS: ReadonlySet<SchemaFormFieldKind> = new Set(['enum', 'secret', 'json']);
+
+function fieldOfSchema(
+  normalizedSchema: JsonSchemaObject,
+  nullable: boolean,
+  path: string[],
+  key: string,
+  required: boolean,
+  modelOptions: SchemaFormModelOptions,
+): SchemaFormField {
   // A string marked `secret: true` is a reference to a saved secret, never a text value.
   if (normalizedSchema['secret'] === true && schemaTypeOf(normalizedSchema) === 'string') {
     return baseField('secret', normalizedSchema, path, key, required);
   }
   const options = enumOptions(normalizedSchema);
   if (options.length > 0) {
+    // An enum that lists `null` already offers it as an option; any other one clears to `null`.
+    const clearsToNull = nullable && !options.some((option) => option.value === null);
     const clearable =
-      modelOptions.optionalEnumsUnset === true && !required && !('default' in normalizedSchema);
+      clearsToNull ||
+      (modelOptions.optionalEnumsUnset === true && !required && !('default' in normalizedSchema));
     return {
       ...baseField('enum', normalizedSchema, path, key, required),
       options,
       ...(clearable ? { clearable: true as const } : {}),
+      ...(clearsToNull ? { nullable: true as const } : {}),
     };
   }
 
   const choiceBranches = choiceBranchSchemas(normalizedSchema);
   if (choiceBranches) {
-    const branchField = (branch: JsonSchemaObject) =>
+    const parentTitle = path.length === 0 ? undefined : fieldLabel(normalizedSchema, key);
+    const branchField = (branch: JsonSchemaObject, sibling: JsonSchemaObject) =>
       fieldFromJsonSchema(
         {
           ...branch,
-          title: branchTitle(branch),
+          title: branchTitle(branch, sibling, parentTitle),
           // A `const` branch is a one-option enum.
           ...('const' in branch ? { enum: [branch['const']] } : {}),
         },
@@ -160,7 +224,10 @@ function fieldFromJsonSchema(
       );
     return {
       ...baseField('choice', normalizedSchema, path, key, required),
-      fields: [branchField(choiceBranches.literal), branchField(choiceBranches.object)],
+      fields: [
+        branchField(choiceBranches.literal, choiceBranches.object),
+        branchField(choiceBranches.object, choiceBranches.literal),
+      ],
     };
   }
 
@@ -214,12 +281,19 @@ function fieldFromJsonSchema(
   const fieldKind = fieldKindForSchemaType(schemaType);
   if (fieldKind) {
     const field = baseField(fieldKind, normalizedSchema, path, key, required);
-    if (
-      (fieldKind === 'number' || fieldKind === 'integer') &&
-      isMillisecondsField(normalizedSchema, key)
-    ) {
-      field.unit = 'milliseconds';
+    if (fieldKind === 'number' || fieldKind === 'integer') {
+      if (isMillisecondsField(normalizedSchema, key)) {
+        field.unit = 'milliseconds';
+        // The unit is in the field's control, so the name does not carry it: `timeoutMilliseconds`
+        // is "Timeout", unless the schema names the field itself.
+        const named = normalizedSchema['title'];
+        const bare = key.replace(DURATION_NAME_SUFFIX, '');
+        if (bare !== '' && !(typeof named === 'string' && named.trim().length > 0)) {
+          field.label = sentenceCaseLabel(bare);
+        }
+      }
     }
+    if (nullable) field.nullable = true;
     return field;
   }
 
@@ -250,14 +324,51 @@ function isStringRecordSchema(schema: JsonSchemaObject): boolean {
   return isRecord(additional) && additional['type'] === 'string' && !('enum' in additional);
 }
 
-/** A choice is a `oneOf` of exactly one primitive branch and one object branch with `properties`. */
+/**
+ * The alternatives of a union, from its `anyOf` or its `oneOf`. A schema that holds both is no
+ * union this form reads, and neither is one whose alternatives are not an array.
+ */
+function unionAlternatives(schema: JsonSchemaObject): readonly unknown[] | undefined {
+  const anyOf = schema['anyOf'];
+  const oneOf = schema['oneOf'];
+  if (anyOf !== undefined && oneOf !== undefined) return undefined;
+  const alternatives = anyOf ?? oneOf;
+  return Array.isArray(alternatives) ? (alternatives as unknown[]) : undefined;
+}
+
+/** Whether `type` is a list of types that includes `"null"`. */
+function typeAllowsNull(schema: JsonSchemaObject): boolean {
+  const type = schema['type'];
+  return Array.isArray(type) && type.includes('null');
+}
+
+/**
+ * The schema of a field whose union is that field and `{ "type": "null" }`, drawn as the field
+ * with the union's own keywords (`description`, `default`) laid over it, or `undefined` for any
+ * other schema. The form validates the schema it was given, so this view never decides what is
+ * valid; what the field does about `null` is decided by its kind (`fieldFromJsonSchema`).
+ */
+function withoutNullAlternative(schema: JsonSchemaObject): JsonSchemaObject | undefined {
+  const alternatives = unionAlternatives(schema);
+  if (alternatives === undefined || alternatives.length !== 2) return undefined;
+  const isNull = (branch: unknown): boolean => isRecord(branch) && branch['type'] === 'null';
+  const [first, second] = alternatives;
+  if (isNull(first) === isNull(second)) return undefined;
+  const branch = isNull(first) ? second : first;
+  if (!isRecord(branch)) return undefined;
+  const { anyOf: _anyOf, oneOf: _oneOf, ...rest } = schema;
+  const view = { ...branch, ...rest };
+  return view['secret'] === true ? undefined : view;
+}
+
+/** A choice is a union of exactly one primitive alternative and one object alternative with `properties`. */
 function choiceBranchSchemas(
   schema: JsonSchemaObject,
 ): { literal: JsonSchemaObject; object: JsonSchemaObject } | undefined {
   if (isRecord(schema['properties'])) return undefined;
-  const branches = schema['oneOf'];
-  if (!Array.isArray(branches) || branches.length !== 2) return undefined;
-  const [first, second] = branches as unknown[];
+  const branches = unionAlternatives(schema);
+  if (branches === undefined || branches.length !== 2) return undefined;
+  const [first, second] = branches;
   if (!isRecord(first) || !isRecord(second)) return undefined;
   const literal = [first, second].find(isLiteralBranch);
   const object = [first, second].find(isObjectBranch);
@@ -279,15 +390,54 @@ function isLiteralBranch(branch: JsonSchemaObject): boolean {
   return type === 'string' || type === 'number' || type === 'integer' || type === 'boolean';
 }
 
-/** The segment label of a choice branch: its title, else its literal value, else a type name. */
-function branchTitle(branch: JsonSchemaObject): string {
+/** The unit a duration's name ends in, which its control shows instead. */
+export const DURATION_NAME_SUFFIX = /(?:Ms|_ms|Milliseconds|_milliseconds)$/;
+
+/** The longest description a person reads as a name, where a choice's alternative has no title. */
+const SHORT_DESCRIPTION_LENGTH = 32;
+
+/** What a literal says in words: `keep-all` is "Keep all", and `false` beside an object is "Off". */
+function literalLabel(value: unknown, sibling: JsonSchemaObject): string {
+  if (value === false) return isObjectBranch(sibling) ? 'Off' : 'No';
+  if (value === true) return isObjectBranch(sibling) ? 'On' : 'Yes';
+  if (value === null) return 'None';
+  if (typeof value === 'string') return humanizeIdentifier(value, { casing: 'sentence' });
+  return typeof value === 'number' ? String(value) : (JSON.stringify(value) ?? '');
+}
+
+/**
+ * The words of one alternative of a choice, as a person reads it, never a JSON type name: its
+ * title, else a literal in words, else its short description, else what it holds in plain terms.
+ * An object with no title is the field's own title when the field has one, else "Custom".
+ */
+function branchTitle(
+  branch: JsonSchemaObject,
+  sibling: JsonSchemaObject,
+  parentTitle: string | undefined,
+): string {
   const title = branch['title'];
   if (typeof title === 'string' && title.trim().length > 0) return title;
-  if ('const' in branch) return String(branch['const']);
+  if ('const' in branch) return literalLabel(branch['const'], sibling);
   const options = enumOptions(branch);
-  if (options.length === 1 && options[0]) return options[0].label;
-  const type = schemaTypeOf(branch);
-  return type === undefined ? 'Value' : humanizeIdentifier(type);
+  if (options.length === 1 && options[0]) return literalLabel(options[0].value, sibling);
+  const description = branch['description'];
+  if (typeof description === 'string') {
+    const text = description.trim();
+    if (text.length > 0 && text.length <= SHORT_DESCRIPTION_LENGTH) return text;
+  }
+  if (isObjectBranch(branch)) return parentTitle ?? 'Custom';
+  if (options.length > 1) return parentTitle ?? 'Preset';
+  switch (schemaTypeOf(branch)) {
+    case 'string':
+      return 'Text';
+    case 'number':
+    case 'integer':
+      return 'Number';
+    case 'boolean':
+      return 'Yes or no';
+    default:
+      return 'Other';
+  }
 }
 
 function fieldKindForSchemaType(type: string | undefined): SchemaFormFieldKind | undefined {
@@ -375,7 +525,8 @@ function fieldLabel(schema: JsonSchemaObject, key: string): string {
   if (typeof title === 'string' && title.trim().length > 0) {
     return title;
   }
-  return humanizeIdentifier(key);
+  // Cinder's labels are sentence case, so a property with no title is "Keep last", not "Keep Last".
+  return sentenceCaseLabel(key);
 }
 
 /**
@@ -403,7 +554,7 @@ export function schemaHoldsConcealedField(schema: unknown, depth = 0): boolean {
 }
 
 /** A string whose value is a moment: Bureau checks `date`, `time` and `date-time` as RFC 3339, so a blank is not one. */
-export function isTemporalStringSchema(schema: JsonSchemaObject): boolean {
+function isTemporalStringSchema(schema: JsonSchemaObject): boolean {
   const format = schema['format'];
   return format === 'date' || format === 'time' || format === 'date-time';
 }
@@ -417,10 +568,19 @@ export function isTemporalStringSchema(schema: JsonSchemaObject): boolean {
  * an RFC 3339 value; the form's own root cannot be left out, so it is `null` where the schema
  * allows null and the empty string (which the validator then refuses) where it does not.
  */
-export function blankMomentValue(field: SchemaFormField): unknown {
+function blankMomentValue(field: SchemaFormField): unknown {
   if (field.path.length > 0) return undefined;
   const type = field.schema['type'];
   return Array.isArray(type) && type.includes('null') ? null : '';
+}
+
+/**
+ * What a text field holds once its text is empty: `null` for a field whose schema allows it, a
+ * blank moment's value for a date or time, and the empty string for any other text.
+ */
+export function emptyTextValue(field: SchemaFormField): unknown {
+  if (field.nullable) return null;
+  return isTemporalStringSchema(field.schema) ? blankMomentValue(field) : '';
 }
 
 export function fieldAtPathExists(field: SchemaFormField, path: readonly string[]): boolean {
@@ -458,10 +618,26 @@ export function secretKeyOf(value: unknown): string | undefined {
   return isSecretReference(value) ? value.$secret : undefined;
 }
 
+/**
+ * What a field that allows `null` holds once it is set, where {@link defaultValueForField} is
+ * `null`: an object has each of its fields at its own default.
+ */
+export function valueWhenSet(field: SchemaFormField): unknown {
+  if (field.kind === 'object') {
+    return Object.fromEntries(
+      field.fields.map((child) => [child.key, defaultValueForField(child)]),
+    );
+  }
+  const { nullable: _nullable, ...rest } = field;
+  return defaultValueForField(rest);
+}
+
 export function defaultValueForField(field: SchemaFormField): unknown {
   // A secret field never starts from a value: not a default, and not a text a host seeded.
   if (field.kind === 'secret') return undefined;
   if ('default' in field.schema) return cloneJsonCompatible(field.schema['default']);
+  // A field that allows `null` and names no default starts as `null`, which is a value it holds.
+  if (field.nullable) return null;
 
   if (field.kind === 'object') {
     const value: Record<string, unknown> = {};

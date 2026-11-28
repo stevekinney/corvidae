@@ -43,7 +43,7 @@ describe('schema-form model', () => {
     required: ['name', 'count', 'active', 'mode', 'nested'],
   } satisfies JsonSchemaObject;
 
-  test('labels untitled properties with humanizeIdentifier and keeps a schema title', () => {
+  test('labels untitled properties in sentence case and keeps a schema title', () => {
     const model = createSchemaFormModel({
       type: 'object',
       properties: {
@@ -55,8 +55,8 @@ describe('schema-form model', () => {
     });
     expect(model.field.fields.map((field) => field.label)).toEqual([
       'Order ID',
-      'Wrong Item',
-      'API Key',
+      'Wrong item',
+      'API key',
       'Where to call back',
     ]);
   });
