@@ -44,6 +44,29 @@ test('reports a public export that reaches Bun.file', async () => {
   );
 });
 
+test('does not probe ./scripts/ and ./test/ tooling entry points but still probes other subpaths', async () => {
+  await withRepository(
+    {
+      'packages/demo/package.json': JSON.stringify({
+        name: '@scope/demo',
+        exports: {
+          './scripts/x.ts': './scripts/x.ts',
+          './test/y.ts': './src/test/y.ts',
+          './lib': './src/lib.ts',
+        },
+      }),
+      'packages/demo/scripts/x.ts': "export const x = Bun.file('x.txt');\n",
+      'packages/demo/src/test/y.ts': "export const y = Bun.file('y.txt');\n",
+      'packages/demo/src/lib.ts': "export const lib = Bun.file('lib.txt');\n",
+    },
+    async (root) => {
+      expect(judgeExportRuntimeReach(await scanExportRuntimeReach(root), []).unlisted).toEqual([
+        { package: '@scope/demo', subpath: './lib', finding: 'Bun.file' },
+      ]);
+    },
+  );
+});
+
 test('reports normalized Node builtins without making them guard findings', async () => {
   await withRepository(
     {

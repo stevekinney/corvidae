@@ -329,7 +329,7 @@ export function loadRepository(runner: Runner = defaultRunner): RepositoryView {
 }
 
 const repositoryRoots =
-  /^(?:applications|components|packages|internal|testing|plugins|scripts|documentation|\.agents|\.claude|\.codex|\.github|tmp)\//;
+  /^(?:applications|components|packages|configuration|testing|plugins|scripts|documentation|\.agents|\.claude|\.codex|\.github|tmp)\//;
 const testFileName = /^[\w.-]+\.(?:integration\.|slow\.)?test\.tsx?$/;
 /** A line that says the path is produced, not read: a file to create or an output, so it need not exist. */
 const producing =

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/constraints.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/constraints.schema.json",
   "component": "pricing-card",
   "summary": "PricingCard requires at least one CTA activation source (href or onPlanSelect), and target/rel only make sense once href is set.",
   "rules": [

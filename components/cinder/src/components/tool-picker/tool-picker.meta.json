@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "overlay",
   "status": "beta",
   "purpose": "Dialog for choosing tools and skills from a searchable list grouped by source, with each tool's risk and starting level, a counter, a loading state and collapsing groups for long lists.",

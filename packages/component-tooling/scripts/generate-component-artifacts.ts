@@ -88,8 +88,8 @@ async function runMetadataMode(pkg: ComponentPackage): Promise<void> {
 /** The commands that make what `--check` compares current again. */
 function fixCommand(pkg: ComponentPackage): string {
   const script = pkg.isCinder
-    ? 'bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts'
-    : 'bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --package-root .';
+    ? 'bun ../../packages/component-tooling/scripts/generate-component-artifacts.ts'
+    : 'bun ../../packages/component-tooling/scripts/generate-component-artifacts.ts --package-root .';
   return `cd ${pkg.root.slice(pkg.root.indexOf('components/'))} && ${script} --fix`;
 }
 

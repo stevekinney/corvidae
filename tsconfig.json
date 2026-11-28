@@ -5,6 +5,6 @@
     "types": ["bun"]
   },
   "include": ["scripts"],
-  "exclude": ["node_modules", "applications", "packages", "components", "internal"],
+  "exclude": ["node_modules", "applications", "packages", "components", "configuration"],
   "references": [{ "path": "./packages/velveteen/tsconfig.source.json" }]
 }

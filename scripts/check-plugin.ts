@@ -93,7 +93,7 @@ export async function checkPlugin(folder: string): Promise<string[]> {
     await writeFile(
       join(scratch, 'tsconfig.json'),
       JSON.stringify({
-        extends: join(repositoryRoot, 'internal/typescript/library.json'),
+        extends: join(repositoryRoot, 'configuration/typescript/library.json'),
         include: ['plugin'],
         exclude: ['plugin/**/*.test.ts', 'node_modules'],
         references: [{ path: join(authoringPackage, 'tsconfig.source.json') }],

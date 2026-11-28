@@ -176,7 +176,7 @@ async function readManifest(path: string): Promise<Manifest> {
 
 async function libraryApplicationConfigurations(): Promise<string[]> {
   const libraries = workspaceParentDirectories.filter(
-    (directory) => !['applications', 'internal'].includes(directory),
+    (directory) => !['applications', 'configuration'].includes(directory),
   );
   const configurations = new Bun.Glob(
     `${directoryGlob(libraries)}/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}`,
@@ -454,7 +454,7 @@ describe('internal workspace architecture', () => {
   });
 
   test('compiler configuration has a dedicated internal owner and two public presets', async () => {
-    const configuration = await readManifest('internal/typescript');
+    const configuration = await readManifest('configuration/typescript');
     expect(configuration.name).toBe('@lostgradient/typescript');
     expect(configuration.private).toBe(true);
     expect(configuration.exports).toEqual({
@@ -463,15 +463,15 @@ describe('internal workspace architecture', () => {
       './component.json': './component.json',
     });
     expect(configuration.scripts).toBeUndefined();
-    expect(await Bun.file(join(root, 'internal/typescript/base.json')).exists()).toBe(true);
-    expect(await Bun.file(join(root, 'internal/typescript/server.json')).exists()).toBe(false);
+    expect(await Bun.file(join(root, 'configuration/typescript/base.json')).exists()).toBe(true);
+    expect(await Bun.file(join(root, 'configuration/typescript/server.json')).exists()).toBe(false);
     for (const preset of ['library.json', 'browser.json']) {
-      const contents = await Bun.file(join(root, 'internal/typescript', preset)).json();
+      const contents = await Bun.file(join(root, 'configuration/typescript', preset)).json();
       expect(contents.extends).toBe('./base.json');
       expect(import.meta.resolve(`@lostgradient/typescript/${preset}`)).toEndWith(preset);
     }
     // A component package's whole tsconfig is `extends` this one (COR-2079).
-    const component = await Bun.file(join(root, 'internal/typescript/component.json')).json();
+    const component = await Bun.file(join(root, 'configuration/typescript/component.json')).json();
     expect(component.extends).toBe('./browser.json');
     expect(import.meta.resolve('@lostgradient/typescript/component.json')).toEndWith(
       'component.json',
@@ -502,7 +502,7 @@ describe('internal workspace architecture', () => {
 
   test('every executable workspace exposes consistent Bun quality scripts', async () => {
     for await (const manifestPath of new Bun.Glob(
-      `${directoryGlob(workspaceParentDirectories.filter((directory) => directory !== 'internal'))}/*/package.json`,
+      `${directoryGlob(workspaceParentDirectories.filter((directory) => directory !== 'configuration'))}/*/package.json`,
     ).scan(root)) {
       const directory = dirname(manifestPath);
       const manifest = await readManifest(directory);

@@ -22,7 +22,7 @@
  *     same known sites" from "a new one"). Pass `--update-baseline` to rewrite
  *     the baseline after an intentional change.
  *
- * Run from `components/cinder` as `bun ../../internal/component-tooling/scripts/check-platform-features.ts`
+ * Run from `components/cinder` as `bun ../../packages/component-tooling/scripts/check-platform-features.ts`
  * (report) or with `--strict` (gate; wired into `lint` through `lint:checks`).
  *
  * oxlint cannot express this (cross-file inventory, the `@media` vs
@@ -460,7 +460,7 @@ async function main(): Promise<void> {
   process.stderr.write(
     `check-platform-features — ${regressions.length} viewport @media(width) site${regressions.length === 1 ? '' : 's'} exceed the baseline.\n` +
       '  A component reacting to its own box width must use @container, not a viewport @media (RESPONSIVE-POLICY.md).\n' +
-      '  If this viewport query is genuinely viewport-owned, run `bun ../../internal/component-tooling/scripts/check-platform-features.ts --update-baseline` from `components/cinder` to grandfather it.\n\n' +
+      '  If this viewport query is genuinely viewport-owned, run `bun ../../packages/component-tooling/scripts/check-platform-features.ts --update-baseline` from `components/cinder` to grandfather it.\n\n' +
       regressions
         .map(
           (reg) =>

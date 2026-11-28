@@ -402,7 +402,7 @@ async function compileContract(
     await Bun.write(
       configuration,
       JSON.stringify({
-        extends: join(root, 'internal/typescript', configurationName),
+        extends: join(root, 'configuration/typescript', configurationName),
         include: ['./contract.ts'],
         // `base.json` leaves `types` unset, which every real consumer in
         // this workspace resolves by explicitly opting into `["bun"]` (see

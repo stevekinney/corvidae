@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "overlay",
   "status": "beta",
   "purpose": "The screen people see while the Interborough host restarts: a page takeover with the steps, the reconnect attempts with Try again, and what to check and run if it fails.",

@@ -443,17 +443,17 @@ describe('fallbacks that widen the selection', () => {
   });
 
   test('a workspace with no code, such as the shared TypeScript bases, selects the repository', () => {
-    const configuration = workspace('@scope/typescript', 'internal/typescript', {
+    const configuration = workspace('@scope/typescript', 'configuration/typescript', {
       exports: { './base.json': './base.json' },
       testScripts: [],
     });
-    const files = { ...baseFiles, 'internal/typescript/base.json': '{}' };
+    const files = { ...baseFiles, 'configuration/typescript/base.json': '{}' };
     const { selection, mode } = select(
       files,
-      ['internal/typescript/base.json'],
+      ['configuration/typescript/base.json'],
       [...everyWorkspace, configuration],
     );
-    expect(selection.repositoryRule).toContain('internal/typescript/base.json');
+    expect(selection.repositoryRule).toContain('configuration/typescript/base.json');
     expect(mode('@scope/gamma')).toBe('full');
   });
 

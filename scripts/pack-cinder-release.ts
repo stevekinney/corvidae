@@ -122,7 +122,7 @@ async function addChatMetadataModules(
   exports: Map<string, ExportTarget>,
 ): Promise<void> {
   await copyFile(
-    join(repositoryRoot, 'internal/component-tooling/src/schema-types.ts'),
+    join(repositoryRoot, 'packages/component-tooling/src/schema-types.ts'),
     join(stage, '.metadata/schema-types.d.ts'),
   );
   for (const [entry, target] of exports) {
@@ -187,7 +187,7 @@ function normalizeDeclarations(source: string, path: string): string {
 }
 
 async function stageSchemas(stage: string): Promise<void> {
-  const schemas = join(repositoryRoot, 'internal/component-tooling/src/schemas');
+  const schemas = join(repositoryRoot, 'packages/component-tooling/src/schemas');
   const destination = join(stage, '.metadata/schemas');
   const copied = new Set<string>();
   for (const member of new Bun.Glob('**/*.json').scanSync({ cwd: stage, dot: true })) {
@@ -199,7 +199,7 @@ async function stageSchemas(stage: string): Promise<void> {
     if (typeof schema !== 'string' || URL.canParse(schema)) continue;
 
     const shared =
-      /(?:^|\/)internal\/component-tooling\/src\/schemas\/([A-Za-z\d_.-]+\.json)$/.exec(
+      /(?:^|\/)packages\/component-tooling\/src\/schemas\/([A-Za-z\d_.-]+\.json)$/.exec(
         schema,
       )?.[1];
     let reference = schema;

@@ -347,7 +347,7 @@ export function readJUnitArtifactReports(directory: string): Uint8Array[] {
 
 const expectedArtifacts = [
   'junit-root',
-  ...Array.from({ length: 12 }, (_, index) => `junit-tests-${index}`),
+  ...Array.from({ length: 11 }, (_, index) => `junit-tests-${index}`),
 ];
 
 export function createCiEvidenceWorkflowReceipt(input: {

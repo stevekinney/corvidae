@@ -212,7 +212,7 @@ const BUREAU_PROVENANCE_PATH = join(
 );
 /** The command that brings Bureau's copy back in step. */
 export const WRITE_BUREAU_COMMAND =
-  'cd components/cinder && bun ../../internal/component-tooling/scripts/generate-a2ui-catalog.ts --write-bureau';
+  'cd components/cinder && bun ../../packages/component-tooling/scripts/generate-a2ui-catalog.ts --write-bureau';
 /** Absolute path of the checked-in allowlist. */
 export const ALLOWLIST_PATH = join(PACKAGE_ROOT, 'scripts/a2ui-catalog-allowlist.json');
 

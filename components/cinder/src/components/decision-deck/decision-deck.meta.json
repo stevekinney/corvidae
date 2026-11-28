@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "action",
   "status": "beta",
   "purpose": "Stack of decision cards for working through a review queue on a phone: drag a card to accept or reject it, or press the equal round buttons, with Undo, progress and an all-caught-up state.",

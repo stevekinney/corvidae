@@ -150,7 +150,7 @@ describe.each([
         {
           // The helper walks Cinder's `src` and `scripts`, and reads the root `workspaces` and the
           // workspace manifests they list only to find the one named `@lostgradient/cinder`.
-          fingerprint: '717730156d1ee877d2e21febd9340b24f6784aea8419b23eee78358bd352cf4f',
+          fingerprint: 'f99a56721b306c8ec8b3647946c265b7763ea3a8bb3127062ea871c11384a74a',
           inputs: [
             '$TURBO_ROOT$/components/cinder/{src,scripts}/**',
             '$TURBO_ROOT$/package.json',
@@ -226,16 +226,16 @@ describe.each([
       expect(
         Object.hasOwn(
           cinder.inputs,
-          '../../internal/component-tooling/scripts/generate-component-artifacts.ts',
+          '../../packages/component-tooling/scripts/generate-component-artifacts.ts',
         ),
       ).toBe(true);
       expect(
-        Object.hasOwn(cinder.inputs, '../../internal/component-tooling/src/schema-types.ts'),
+        Object.hasOwn(cinder.inputs, '../../packages/component-tooling/src/schema-types.ts'),
       ).toBe(true);
       expect(Object.hasOwn(tooling.inputs, 'package.json')).toBe(true);
       for (const path of paths) {
         if (
-          !/^internal\/component-tooling\/(?:scripts|src)\//u.test(path) ||
+          !/^packages\/component-tooling\/(?:scripts|src)\//u.test(path) ||
           /\.test\.[cm]?[jt]s$/u.test(path)
         )
           continue;
@@ -245,8 +245,8 @@ describe.each([
         );
       }
       const metadataInputs = configuration.tasks['metadata']?.inputs ?? [];
-      expect(metadataInputs).toContain('$TURBO_ROOT$/internal/component-tooling/scripts/**');
-      expect(metadataInputs).toContain('$TURBO_ROOT$/internal/component-tooling/src/**');
+      expect(metadataInputs).toContain('$TURBO_ROOT$/packages/component-tooling/scripts/**');
+      expect(metadataInputs).toContain('$TURBO_ROOT$/packages/component-tooling/src/**');
     }
     expect(reachableRootHelpers).toContain(ENSURE_CINDER_GENERATED);
     // The group starts this fixed executable by path, which the static import graph cannot see.

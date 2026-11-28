@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "feedback",
   "status": "beta",
   "purpose": "Wrapper for a page whose data may be old that keeps that data at full contrast and turns off only the controls that change something, each described by why.",

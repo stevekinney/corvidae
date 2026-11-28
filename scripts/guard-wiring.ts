@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { findGateInvocations } from '../internal/component-tooling/scripts/gate-wiring.ts';
+import { findGateInvocations } from '../packages/component-tooling/scripts/gate-wiring.ts';
 
 export const REQUIRED_GUARDS = [
   'scripts/check-installed-dependencies.ts',

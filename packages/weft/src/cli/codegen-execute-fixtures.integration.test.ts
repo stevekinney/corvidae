@@ -223,16 +223,16 @@ function typecheckConsumerProject(configurationPath: string): readonly string[] 
 
 function preparePackedWorkspace(root: string): string {
   const packageDirectory = join(root, 'packages', 'weft');
-  const typescriptDirectory = join(root, 'internal', 'typescript');
+  const typescriptDirectory = join(root, 'configuration', 'typescript');
   copyDirectory(PACKAGE_ROOT, packageDirectory);
-  copyDirectory(join(REPOSITORY_ROOT, 'internal', 'typescript'), typescriptDirectory);
+  copyDirectory(join(REPOSITORY_ROOT, 'configuration', 'typescript'), typescriptDirectory);
 
   const rootPackageJsonPath = join(root, 'package.json');
   const rootPackageJson = readJsonFile(join(REPOSITORY_ROOT, 'package.json'));
   rootPackageJson['workspaces'] = [
     'packages/weft',
     ...WEFT_WORKSPACE_DEPENDENCIES.values(),
-    'internal/typescript',
+    'configuration/typescript',
   ];
   writeJsonFile(rootPackageJsonPath, rootPackageJson);
   cpSync(join(REPOSITORY_ROOT, 'bun.lock'), join(root, 'bun.lock'));

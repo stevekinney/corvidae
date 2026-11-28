@@ -38,7 +38,7 @@ function context(paths: string[] = []): EvidenceContext {
       const byWorkspace = new Map<string, string[]>();
       for (const file of changed) {
         const match =
-          /^((?:applications|components|packages|plugins|testing|internal)\/[\w.-]+)\/.+\.test\.ts$/.exec(
+          /^((?:applications|components|packages|plugins|testing|configuration)\/[\w.-]+)\/.+\.test\.ts$/.exec(
             file,
           );
         if (match?.[1] !== undefined)

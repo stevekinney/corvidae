@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "action",
   "status": "stable",
   "purpose": "Compound child for Toolbar that grows to consume remaining inline space and pushes following groups to the far edge.",

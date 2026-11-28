@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "beta",
   "purpose": "Action bar for the end of a form: a summary on the left, the secondary then primary buttons on the right, an optional failed-save alert above them, and an option to stay at the bottom of a long form.",

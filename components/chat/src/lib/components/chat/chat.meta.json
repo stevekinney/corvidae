@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "domain",
   "status": "domain-suite",
   "purpose": "Opinionated conversation surface bundling message list, composer, attachments, and scroll affordances for AI or support transcripts.",

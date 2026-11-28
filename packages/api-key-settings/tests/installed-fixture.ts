@@ -1,5 +1,5 @@
 import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -31,19 +31,11 @@ export async function installFixture() {
   try {
     const rootManifest = await readManifest(join(repository, 'package.json'));
     const locations = new Map<string, string>();
-    for (const parent of [
-      'packages',
-      'components',
-      'internal',
-      'testing',
-      'applications',
-      'plugins',
-    ]) {
-      for (const child of await readdir(join(repository, parent))) {
-        const relative = join(parent, child);
-        const manifestPath = join(repository, relative, 'package.json');
-        if (!(await Bun.file(manifestPath).exists())) continue;
-        const manifest = await readManifest(manifestPath);
+    // The root `workspaces` globs are the one list of workspace locations.
+    for (const pattern of rootManifest.workspaces as string[]) {
+      for await (const manifestFile of new Bun.Glob(`${pattern}/package.json`).scan(repository)) {
+        const relative = dirname(manifestFile);
+        const manifest = await readManifest(join(repository, manifestFile));
         locations.set(manifest.name, relative);
       }
     }

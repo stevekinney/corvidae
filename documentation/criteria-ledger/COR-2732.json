@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2732",
+  "branch": "chef/config-move",
+  "checkedAt": "ad44a23f834c3fb3e34a45f8a509f787120228ff",
+  "briefVersion": "126bf6507d9e",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "configuration/typescript, exports unchanged, workspace-contract passes"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "packages/component-tooling; dead export generate-component-metadata.ts removed; its tests run in the Tests (packages) lane (--filter=./packages/*) and junit lands in packages/*/test-output/junit"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "workspaces, workspace-directories.ts, workspace-layout.md updated"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "turbo, workflows, guards updated; fixture token check via tooling tokens:fixtures; export-reach guard treats ./scripts/ and ./test/ as tooling entry points (coordinator decision); empty everything-else test shard removed from main.yml with the evidence aggregate reduced to 11 junit-tests artifacts"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "git grep: old paths only in MIGRATION.md lines 283 and 512, dated history; README, tsconfig and MIGRATION architecture text updated"
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "lint:root 0, test:self 0, test:self:slow 993 pass 0 fail at head; connected-apps and api-key-settings test:slow pass, check-export-runtime-reach 0, focused-checks 8 passed at head"
+    }
+  ]
+}

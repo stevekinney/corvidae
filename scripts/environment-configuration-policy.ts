@@ -36,7 +36,7 @@ export const environmentBoundaries = [
       'applications/interborough/scripts/environment-configuration.ts',
       'applications/playground/scripts/environment-configuration.ts',
       'applications/terminal-example/tests/environment-configuration.ts',
-      'internal/component-tooling/scripts/environment-configuration.ts',
+      'packages/component-tooling/scripts/environment-configuration.ts',
       'scripts/browser-fixtures/environment-configuration.ts',
       'scripts/environment-configuration.ts',
       'packages/armorer/test/fixtures/environment-configuration.ts',

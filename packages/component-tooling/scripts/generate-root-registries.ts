@@ -36,7 +36,7 @@ const DEFAULT_PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder')
 
 /** The command a contributor runs to bring both regions up to date. */
 export const ROOT_REGISTRIES_COMMAND =
-  'cd components/cinder && bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts';
+  'cd components/cinder && bun ../../packages/component-tooling/scripts/generate-component-artifacts.ts';
 
 const INDEX_START = '// <generated:component-exports>';
 const INDEX_END = '// </generated:component-exports>';

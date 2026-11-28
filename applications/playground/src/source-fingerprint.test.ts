@@ -271,7 +271,7 @@ describe('newestSourceMtimeMs', () => {
     // fingerprint too, or a running server with the old server code loaded
     // looks fresh.
     expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('components/cinder/scripts');
-    expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('internal/component-tooling/scripts');
+    expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('packages/component-tooling/scripts');
     expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('applications/playground/scripts');
   });
 
