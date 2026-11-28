@@ -292,6 +292,41 @@ describe('keepPinnedThroughResize', () => {
     expect(kept.takenToEnd()).toBe(true);
   });
 
+  test('pressing a control in the transcript, or a key that does not scroll, is not taking it to its end', () => {
+    const { transcript, row, scrolledTo, kept } = transcriptOf({ rowsEnd: 520, clientHeight: 400 });
+    // A press on a control inside a row.
+    row.dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+    // A key that scrolls nothing.
+    transcript.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'a' }));
+    scrolledTo(180);
+    expect(kept.takenToEnd()).toBe(false);
+
+    // A scrolling key is a person scrolling.
+    transcript.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'End' }));
+    scrolledTo(100);
+    scrolledTo(180);
+    expect(kept.takenToEnd()).toBe(true);
+  });
+
+  test('a scroll the page makes itself (Jump to latest) ends the claim and creates none', () => {
+    const { transcript, scrolledTo, kept, state } = transcriptOf({
+      rowsEnd: 520,
+      clientHeight: 400,
+    });
+    transcript.dispatchEvent(new window.Event('wheel'));
+    scrolledTo(180);
+    expect(kept.takenToEnd()).toBe(true);
+    // The page jumps to the rest, whatever was pressed to ask: the claim is gone.
+    state.scrollTop = 120;
+    kept.pageScrolled();
+    expect(kept.takenToEnd()).toBe(false);
+    // A press that asked for the jump, and the page's scroll heard at the true end after it.
+    transcript.dispatchEvent(new window.Event('pointerdown'));
+    kept.pageScrolled();
+    scrolledTo(180);
+    expect(kept.takenToEnd()).toBe(false);
+  });
+
   test('a scroll to the true end with no person behind it is not theirs, and leaving the end gives it back', () => {
     const first = transcriptOf({ rowsEnd: 520, clientHeight: 400 });
     first.scrolledTo(180);

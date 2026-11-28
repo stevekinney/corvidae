@@ -52,6 +52,11 @@ export interface UseChatAutoScrollReturn {
    * does and a reply that streams after it moves the transcript on and never back.
    */
   restingTop(viewport: HTMLElement): number;
+  /**
+   * The page scrolled the transcript itself (Jump to latest): that scroll is not a person taking
+   * the transcript to its end, whatever they pressed to ask for it.
+   */
+  pageScrolled(): void;
 }
 
 type TranscriptGrowth = {
@@ -252,5 +257,5 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
     };
   });
 
-  return { resetPrependSuppression, restingTop };
+  return { resetPrependSuppression, restingTop, pageScrolled: () => pin?.pageScrolled() };
 }

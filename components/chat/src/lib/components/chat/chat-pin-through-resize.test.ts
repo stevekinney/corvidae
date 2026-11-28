@@ -504,6 +504,40 @@ describe('Chat — a transcript a person took to its true end is theirs there', 
 });
 
 describe('Chat — Jump to latest rests where every other rest does', () => {
+  test('after Jump to latest, history that arrives late leaves the last row on the end of the reading box', async () => {
+    const { view, timeline, state, boxChanged, rowChanged, layOut, rowGrows } = renderChat(
+      { scrollHeight: 300, clientHeight: 400, scrollTop: 0 },
+      MASKED,
+    );
+    layOut();
+    await corrected();
+    boxChanged();
+    state.clientHeight = 200;
+    boxChanged();
+    expect(state.scrollTop).toBe(40);
+
+    // The person presses a control inside the transcript (Load earlier messages), which is not
+    // scrolling it, and then asks for the latest message.
+    const row = [...timeline.children].find((child) =>
+      child.classList.contains('chat-message-wrapper'),
+    )!;
+    row.dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+    const container = view.container.querySelector<HTMLElement>('.chat-container')!;
+    await fireEvent.keyDown(container, { key: 'End' });
+    expect(state.scrollTop).toBe(40);
+    timeline.dispatchEvent(new Event('scrollend'));
+    timeline.dispatchEvent(new window.Event('scroll'));
+
+    // The history arrives: the browser's anchoring and the clamp to the new end are heard as a
+    // scroll that lands at the true end. It is no person's, so the claim is not made.
+    state.scrollTop = state.scrollHeight - state.clientHeight;
+    timeline.dispatchEvent(new window.Event('scroll'));
+    rowGrows(300);
+    rowChanged();
+    // The last row's end is on the end of the reading box (300 less the box of 200): the rest.
+    expect(state.scrollTop).toBe(100);
+  });
+
   test('after Jump to latest, a streamed chunk moves the transcript on and never back', async () => {
     const { view, timeline, state, boxChanged, rowChanged, layOut, rowGrows } = renderChat(
       { scrollHeight: 300, clientHeight: 400, scrollTop: 0 },

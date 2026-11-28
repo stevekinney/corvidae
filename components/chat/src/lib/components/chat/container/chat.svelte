@@ -1463,6 +1463,8 @@
       // after it moves the transcript on, never back.
       () => (viewport === null ? 0 : autoScroll.restingTop(viewport)),
     );
+    // The jump is the page's own scroll, whatever was pressed to ask for it.
+    autoScroll.pageScrolled();
   }
 
   /**

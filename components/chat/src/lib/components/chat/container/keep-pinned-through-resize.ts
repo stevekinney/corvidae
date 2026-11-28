@@ -34,11 +34,28 @@ export interface PinnedThroughResize {
    * its true end, never back to the rest.
    */
   takenToEnd(): boolean;
+  /**
+   * The page scrolled the transcript to where it rests (Jump to latest), whatever a person pressed
+   * to ask for it: that scroll is the page's, so it ends any claim that the person took the
+   * transcript to its true end, and creates none.
+   */
+  pageScrolled(): void;
   /** Stops looking. */
   stop(): void;
 }
 
-/** The inputs by which a person takes the transcript: the same four the placements read. */
+/** The keys that scroll a transcript, which is all a key press can do to it. */
+const SCROLL_KEYS: ReadonlySet<string> = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'PageUp',
+  'PageDown',
+  'Home',
+  'End',
+  ' ',
+]);
+
+/** The inputs by which a person takes the transcript, as scrolling and not as pressing a control. */
 const PERSON_INPUTS = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
 
 /**
@@ -85,7 +102,7 @@ export function keepPinnedThroughResize(
   rest: () => void,
 ): PinnedThroughResize {
   if (typeof ResizeObserver === 'undefined') {
-    return { rested: () => {}, takenToEnd: () => false, stop: () => {} };
+    return { rested: () => {}, takenToEnd: () => false, pageScrolled: () => {}, stop: () => {} };
   }
   const reach = (): number => transcript.scrollHeight - transcript.clientHeight;
   // Everything the transcript holds, the clear space at its end too, is inside a box that is laid out.
@@ -120,12 +137,19 @@ export function keepPinnedThroughResize(
     }
     restingTop = top;
   };
-  // A person's input in the transcript since the page last rested it. Not a timer: a scroll heard
-  // after the input is the person's, and the page's own rest ends the claim.
+  // A person's scrolling input in the transcript since the page last rested it. Not a timer: a
+  // scroll heard after the input is the person's, and the page's own rest ends the claim. Pressing
+  // a control in the transcript (a button, a link) is not scrolling it, and neither is a key that
+  // does not scroll.
   let input = false;
   // Whether a person took the transcript to its true end, and it has not left it since.
   let toEnd = false;
-  const personInput = (): void => {
+  const personInput = (event: Event): void => {
+    if (event.type === 'pointerdown' && event.target !== transcript) return;
+    if (event.type === 'keydown') {
+      const key = 'key' in event ? event.key : undefined;
+      if (typeof key !== 'string' || !SCROLL_KEYS.has(key)) return;
+    }
     input = true;
   };
   // The layout changed. A transcript that rests where it was left is rested again; one that has
@@ -175,6 +199,12 @@ export function keepPinnedThroughResize(
       input = false;
     },
     takenToEnd: () => toEnd,
+    pageScrolled: () => {
+      restingTop = transcript.scrollTop;
+      following = true;
+      input = false;
+      toEnd = false;
+    },
     stop: () => {
       layout.disconnect();
       rows?.disconnect();
