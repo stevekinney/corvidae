@@ -942,8 +942,10 @@ describe('ListDetail', () => {
       expect(handle.get('inset-block-start')).toBe(
         'calc(50% - var(--cinder-button-height-sm) / 2)',
       );
+      // Only a row's own end padding deep inside the pane, the rest on the detail's edge: a handle
+      // wholly inside the pane covered the time of the row under it ("4:12 PM" read "4:12").
       expect(handle.get('inset-inline-start')?.replace(/\s+/g, ' ')).toBe(
-        'calc( var(--_cinder-list-detail-list-width, 0px) - var(--cinder-button-height-sm) - var(--cinder-space-1) )',
+        'calc(var(--_cinder-list-detail-list-width, 0px) - var(--cinder-space-3))',
       );
       // Shown on hover and focus where the pointer hovers; a touch screen always shows it.
       expect(css).toMatch(

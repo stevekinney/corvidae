@@ -80,17 +80,15 @@
     inset-inline-start: var(--cinder-space-2);
   }
 
-  /* While the list shows the toggle is a handle on the divider (COR-2438): inside the list pane,
-   * against the divider, centred on its length, so it never crowds the header's title or its "+",
-   * and the header keeps its whole width, the title starting on the search field's edge. The list
-   * pane's size, measured as it is dragged, places it. It draws on the raised surface so it reads
-   * over the rows it floats above. */
+  /* While the list shows the toggle is a handle on the divider (COR-2438): on the divider, centred
+   * on its length, so it never crowds the header's title or its "+", and the header keeps its whole
+   * width, the title starting on the search field's edge. Only a row's end padding of it is inside
+   * the list pane and the rest is on the detail's edge: a handle wholly inside the pane covered the
+   * time of the row under it. The list pane's size, measured as it is dragged, places it. It draws
+   * on the raised surface so it reads over what it floats above. */
   .cinder-list-detail:not([data-cinder-list-collapsed]) .cinder-list-detail__toggle {
     inset-block-start: calc(50% - var(--cinder-button-height-sm) / 2);
-    inset-inline-start: calc(
-      var(--_cinder-list-detail-list-width, 0px) - var(--cinder-button-height-sm) -
-        var(--cinder-space-1)
-    );
+    inset-inline-start: calc(var(--_cinder-list-detail-list-width, 0px) - var(--cinder-space-3));
   }
 
   /* One above the other the divider is the list's bottom edge: the handle sits above it, centred. */

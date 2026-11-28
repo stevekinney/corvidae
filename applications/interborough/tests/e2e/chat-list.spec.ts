@@ -281,7 +281,7 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await expect(page.getByRole('button', { name: 'Hide chats' })).toBeFocused();
   });
 
-  test('puts Hide chats on the divider inside the list pane, with its own icon, and starts the title on the search field’s edge, at 1280 pixels (COR-2438)', async ({
+  test('puts Hide chats on the divider, clear of every row’s text, with its own icon, and starts the title on the search field’s edge, at 1280 pixels (COR-2438)', async ({
     page,
   }) => {
     await openChats(page, 1280, `/chats/${SAMPLE_WORLD_THREADS.sayHello}`);
@@ -298,7 +298,26 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
       range.selectNodeContents(title);
       const words = [...range.getClientRects()].find((rect) => rect.width > 0);
       const box = (element: Element) => element.getBoundingClientRect();
+      // Every run of text in the list pane, so the handle can be checked against all of it.
+      const covered: string[] = [];
+      const handle = box(toggle);
+      const walker = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        if ((node.textContent ?? '').trim() === '') continue;
+        const textRange = document.createRange();
+        textRange.selectNodeContents(node);
+        for (const rect of textRange.getClientRects()) {
+          const overlaps =
+            rect.width > 0 &&
+            rect.left < handle.right &&
+            rect.right > handle.left &&
+            rect.top < handle.bottom &&
+            rect.bottom > handle.top;
+          if (overlaps) covered.push((node.textContent ?? '').trim());
+        }
+      }
       return {
+        covered,
         pane: box(pane).toJSON(),
         titleLeft: words?.left ?? box(title).left,
         searchLeft: box(search).left,
@@ -310,8 +329,10 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     expect(read).toBeDefined();
     expect(Math.abs(read!.titleLeft - read!.searchLeft)).toBeLessThanOrEqual(1);
     expect(read!.inHeader).toBe(false);
-    expect(read!.toggle.left).toBeGreaterThanOrEqual(read!.pane.left - 0.5);
-    expect(read!.toggle.right).toBeLessThanOrEqual(read!.pane.right + 0.5);
+    // On the divider: a row's end padding (12px) of it is in the list pane, so no row's time is under it.
+    expect(read!.toggle.left).toBeGreaterThanOrEqual(read!.pane.right - 12.5);
+    expect(read!.toggle.left).toBeLessThanOrEqual(read!.pane.right);
+    expect(read!.covered).toEqual([]);
     expect(read!.toggle.top).toBeGreaterThanOrEqual(read!.pane.top - 0.5);
     expect(read!.toggle.bottom).toBeLessThanOrEqual(read!.pane.bottom + 0.5);
     // Its own icon, not the sidebar's panel icon.
