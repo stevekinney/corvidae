@@ -616,6 +616,17 @@ test.describe('the chat list at other widths', () => {
     await expect(list(page)).toBeVisible();
     // The capture is of the chat as it is, with its history in (COR-2327 B3): its waiting approval.
     await expect(page.locator('[data-approval-decision]')).toBeVisible();
+    // Branch on the person's message ends on the bubble's edge, the column the bubble and the
+    // approval card share, not 7px past it (COR-2725).
+    const branch = page.getByRole('button', { name: 'Branch before this message' });
+    await expect(branch).toBeVisible();
+    const placed = await readBoxes(page, {
+      branch,
+      bubble: page.locator('.chat-message-wrapper[data-role="user"] .chat-message').first(),
+    });
+    expect(placed.branch.x + placed.branch.width).toBeLessThanOrEqual(
+      placed.bubble.x + placed.bubble.width + 0.5,
+    );
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'list beside the chat',
