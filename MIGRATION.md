@@ -43,9 +43,9 @@ This inventory records the consolidation boundaries and validation evidence. The
 
 ## Architecture
 
-Browser component libraries Cinder, Chat, Editor, and Weft UI live under `components/`; other shared libraries remain under `packages/`. Repository configuration lives under `internal/`. Every workspace uses `@lostgradient/*`.
+Browser component libraries Cinder, Chat, Editor, and Weft UI live under `components/`; other shared libraries remain under `packages/`. Repository configuration lives under `configuration/`, and the shared component tooling is `packages/component-tooling`. Every workspace uses `@lostgradient/*`.
 
-All source libraries are private ESM packages with the sole export `{ ".": "./src/index.ts" }`. Consumers compile source. Internal dependencies use `workspace:*`; external versions are centralized in the root Bun catalog. The configuration-only `@lostgradient/typescript` workspace lives at `internal/typescript` and exports only `library.json` and `browser.json`. Both compose a private `base.json`; the unused server preset has been removed.
+All source libraries are private ESM packages with the sole export `{ ".": "./src/index.ts" }`. Consumers compile source. Internal dependencies use `workspace:*`; external versions are centralized in the root Bun catalog. The configuration-only `@lostgradient/typescript` workspace lives at `configuration/typescript` and exports only `library.json`, `browser.json` and `component.json`. All compose a private `base.json`; the unused server preset has been removed.
 
 Shared tool and JSON contracts belong to `@lostgradient/tool-protocol`. Embedding contracts and vector mathematics belong to `@lostgradient/embeddings`. Hashing, signing, and timing-safe comparison belong to `@lostgradient/cryptography`. Armorer owns its Standard Schema detection and declares `@standard-schema/spec` directly.
 
