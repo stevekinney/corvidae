@@ -14,10 +14,14 @@ import { expect, test, type Page } from '@playwright/test';
  * - A transcript scrolled to its end rests at its true end (`scrollTop` at its maximum).
  *
  * The `fits` cases draw the route's own sequence (Interborough chat states, "tool-only turn
- * reconnecting" at 320 by 640): a turn that only called tools is drawn, and its transcript fits its
- * box, so it rests at scroll position 0. Then the stream drops. No message arrives; the reconnect
- * notice mounts in the composer and takes room from the transcript. The browser does not anchor a
- * scroll position of 0, so only the box changing size can say the end moved. The window made smaller
+ * reconnecting" at 320 by 640), on the surface Interborough draws: a turn that only called tools is
+ * drawn, and its transcript fits its box, so it rests at scroll position 0. Then a notice mounts in
+ * the composer and takes room from the transcript. No message arrives, and the notice changes
+ * nothing in the transcript: the route's reconnect notice also stops an outcome row from being
+ * drawn, which shrinks the content as the box shrinks, so the fixture's notice is a plain one. The
+ * browser does not anchor a scroll position of 0, so only the box changing size can say the end
+ * moved. A separate case keeps the default surface (an overlay fade, no room kept clear) at its
+ * true end. The window made smaller
  * (375 to 320 wide) is the same sequence with the content growing instead. The `long` cases, a
  * transcript that overflows and is scrolled to its end, are controls: the browser's own scroll
  * anchoring holds those at the end, and the cases say it keeps doing so.
@@ -28,12 +32,18 @@ import { expect, test, type Page } from '@playwright/test';
  *
  * Run: `bun run --cwd components/chat test:browser --grep "pinned transcript"`
  */
-async function open(page: Page, mode: 'fits' | 'long' | 'empty'): Promise<void> {
+async function open(
+  page: Page,
+  mode: 'fits' | 'long' | 'empty',
+  surface: 'transparent' | 'default' = 'transparent',
+): Promise<void> {
   const url = new URL(
     fixtureRoute('chat'),
     environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
   );
   url.searchParams.set('pinnedResize', mode);
+  // Interborough draws the transparent surface; `default` is Chat's own, whose fade is an overlay.
+  if (surface === 'default') url.searchParams.set('surface', 'default');
   await page.goto(url.href);
   const chat = page.getByTestId('pinned-resize-chat');
   await expect(chat.locator('.chat-timeline')).toBeVisible();
@@ -185,21 +195,31 @@ const composerHeight = (page: Page): Promise<number> =>
         ?.getBoundingClientRect().height ?? 0,
   );
 
+/**
+ * Takes room from the composer with a notice that changes nothing in the transcript. The route's
+ * reconnect notice also stops an outcome row from being drawn, so the content shrinks as the box
+ * does, and what each took could not be told apart: the box shrinking is what these cases are about.
+ */
+async function showNotice(page: Page): Promise<void> {
+  await page.getByTestId('pinned-resize-notice').click();
+  await expect(page.getByTestId('pinned-resize-notice-text')).toBeVisible();
+}
+
 test.describe('a pinned transcript whose box shrinks', () => {
   test.use({ viewport: { width: 320, height: 640 }, colorScheme: 'light' });
 
-  test('a transcript that fits, then a reconnect notice takes room from it, rests with its last row clear and goes no further', async ({
+  test('a transcript that fits, then a notice takes room from it, rests with its last row clear and goes no further', async ({
     page,
   }) => {
     await open(page, 'fits');
     await sizeBox(page, 2);
     const before = await composerHeight(page);
-    await page.getByTestId('pinned-resize-drop').click();
-    await expect(page.locator('.chat-connection-notice')).toBeVisible();
+    await showNotice(page);
     // The notice took room from the transcript, which now overflows.
     expect(await composerHeight(page)).toBeGreaterThan(before);
     await settled(page);
     const now = await painted(page);
+    expect(now.overflow, 'the setup must overflow once the notice is drawn').toBeGreaterThan(2);
     expect(now.inFade).toBeLessThanOrEqual(1);
     expect(now.scrollTop).toBeGreaterThan(0);
     // Not at its true end: that would push the start of the conversation out of view.
@@ -212,8 +232,7 @@ test.describe('a pinned transcript whose box shrinks', () => {
     // First pass: how much room the notice takes.
     await open(page, 'fits');
     const before = await composerHeight(page);
-    await page.getByTestId('pinned-resize-drop').click();
-    await expect(page.locator('.chat-connection-notice')).toBeVisible();
+    await showNotice(page);
     const notice = (await composerHeight(page)) - before;
     expect(notice).toBeGreaterThan(24);
 
@@ -221,14 +240,30 @@ test.describe('a pinned transcript whose box shrinks', () => {
     await open(page, 'fits');
     await sizeBox(page, notice - 10);
     const start = await painted(page);
-    await page.getByTestId('pinned-resize-drop').click();
-    await expect(page.locator('.chat-connection-notice')).toBeVisible();
+    await showNotice(page);
     await settled(page);
     const now = await painted(page);
-    expect(now.overflow).toBeGreaterThanOrEqual(8);
+    expect(
+      now.overflow,
+      'the setup must overflow by the 8 to 10 pixels the case assumes',
+    ).toBeGreaterThanOrEqual(8);
     expect(now.scrollTop).toBe(0);
     expect(now.inFade).toBeLessThanOrEqual(1);
     expect(Math.abs(now.firstRowTop - start.firstRowTop)).toBeLessThanOrEqual(1);
+  });
+
+  test('on the default surface, whose fade is an overlay, a transcript that fits rests at its true end', async ({
+    page,
+  }) => {
+    await open(page, 'fits', 'default');
+    await sizeBox(page, 2);
+    await showNotice(page);
+    await settled(page);
+    const now = await painted(page);
+    expect(now.overflow, 'the setup must overflow once the notice is drawn').toBeGreaterThan(2);
+    // The overlay leaves no room kept clear, so the last row rests where the overlay is off.
+    expect(now.scrollTop).toBeGreaterThan(0);
+    expect(now.distanceToEnd).toBeLessThanOrEqual(1);
   });
 
   test('an empty welcome whose box shrinks stays at its start', async ({ page }) => {

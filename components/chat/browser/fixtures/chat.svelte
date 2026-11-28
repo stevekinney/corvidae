@@ -116,6 +116,15 @@
   const pinnedResizeEnabled =
     pinnedResizeMode === 'long' || pinnedResizeMode === 'fits' || pinnedResizeMode === 'empty';
   let pinnedStreamDropped = $state(false);
+  // A notice in the composer that changes nothing in the transcript: the box shrinks and that is all.
+  // The real reconnect notice also changes the turn it is about (an outcome row stops being drawn),
+  // so what it takes from the box and what the content gives back could not be told apart. The
+  // surface is the one Interborough draws (`transparent`), or Chat's own (`?surface=default`).
+  let pinnedNoticeShown = $state(false);
+  const pinnedSurface =
+    new URLSearchParams(globalThis.location.search).get('surface') === 'default'
+      ? 'default'
+      : 'transparent';
   const pinnedResizeHistory = (() => {
     let history = createConversation({ id: 'pinned-resize' });
     if (pinnedResizeMode === 'empty') return history;
@@ -714,15 +723,24 @@
     <Button data-testid="pinned-resize-drop" onclick={() => (pinnedStreamDropped = true)}>
       Drop the stream
     </Button>
+    <Button data-testid="pinned-resize-notice" onclick={() => (pinnedNoticeShown = true)}>
+      Show a notice
+    </Button>
     <div
       style:height={pinnedResizeMode === 'long' ? '26rem' : '60rem'}
       data-testid="pinned-resize-chat"
     >
+      {#snippet pinnedNotice()}
+        <p data-testid="pinned-resize-notice-text" style="margin: 0; block-size: 4.5rem;">
+          A notice that takes room from the transcript and says nothing about it.
+        </p>
+      {/snippet}
       <Chat
         id="fixture-pinned-resize-chat"
         variant="transcript"
-        surfaceMode="transparent"
+        surfaceMode={pinnedSurface}
         scrollFadeVisible
+        composerFooter={pinnedNoticeShown ? pinnedNotice : undefined}
         conversation={pinnedResizeOutcome.conversation}
         capabilities={{ attachments: false }}
         messageTurnState={(message) => turnStateOf(pinnedResizeOutcome, message)}
