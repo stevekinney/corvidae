@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "stable",
   "purpose": "Numeric input with locale-aware formatting, min and max bounds, and step increments emitting a number or null.",

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "layout",
   "status": "alpha",
   "purpose": "One-dimensional flex layout primitive for arranging direct children with controlled direction, spacing, alignment, and wrapping.",

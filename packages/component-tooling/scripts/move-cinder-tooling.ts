@@ -1,9 +1,9 @@
 /**
- * Moves Cinder's tooling into `internal/component-tooling` (COR-2079), re-runnably.
+ * Moves Cinder's tooling into `packages/component-tooling` (COR-2079), re-runnably.
  *
  * ```sh
- * bun internal/component-tooling/scripts/move-cinder-tooling.ts            # move and rewrite
- * bun internal/component-tooling/scripts/move-cinder-tooling.ts --dry-run  # print the plan
+ * bun packages/component-tooling/scripts/move-cinder-tooling.ts            # move and rewrite
+ * bun packages/component-tooling/scripts/move-cinder-tooling.ts --dry-run  # print the plan
  * ```
  *
  * What moves: every tracked file under `components/cinder/scripts` except the token pipeline
@@ -35,7 +35,7 @@ import { dirname, join, posix } from 'node:path';
 
 import { deriveFamilies, readPackageTree, readRules } from './derive-families.ts';
 
-const TOOLING = 'internal/component-tooling';
+const TOOLING = 'packages/component-tooling';
 const TOOLING_PACKAGE = '@lostgradient/component-tooling';
 const CINDER = 'components/cinder';
 const KEPT_SCRIPTS = [

@@ -2,7 +2,7 @@
  * CIN-602/CIN-245: the computed-cascade half of the structural border tier
  * audit.
  *
- * `internal/component-tooling/src/styles/border-tier-non-border-uses.test.ts` scans
+ * `packages/component-tooling/src/styles/border-tier-non-border-uses.test.ts` scans
  * SOURCE TEXT across every workspace for a tier reference, and that scan is
  * real and still useful for what it can see. Five consecutive review rounds
  * found it narrower than its own claim, and every miss was the same shape: a

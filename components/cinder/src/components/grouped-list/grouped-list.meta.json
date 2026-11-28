@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "beta",
   "purpose": "Inset group of rows on one rounded surface with inset separators, a header and footer outside the surface and on its edge, an optional link to the full set, and an optional quick-add first row.",

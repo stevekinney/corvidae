@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "stable",
   "purpose": "Compact segmented selector that surfaces a small fixed set of options as a connected bar, including bindable selections and route-backed links.",

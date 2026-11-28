@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "stable",
   "purpose": "Interactive saturation, hue, and alpha control for picking an arbitrary color and emitting a normalized value (hex by default, or another CSS Color 4 format via `format`).",

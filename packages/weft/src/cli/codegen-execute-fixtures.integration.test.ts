@@ -232,7 +232,7 @@ function preparePackedWorkspace(root: string): string {
   rootPackageJson['workspaces'] = [
     'packages/weft',
     ...WEFT_WORKSPACE_DEPENDENCIES.values(),
-    'internal/typescript',
+    'configuration/typescript',
   ];
   writeJsonFile(rootPackageJsonPath, rootPackageJson);
   cpSync(join(REPOSITORY_ROOT, 'bun.lock'), join(root, 'bun.lock'));

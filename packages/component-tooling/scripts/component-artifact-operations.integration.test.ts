@@ -22,7 +22,7 @@ async function runPrettierOverridesProbe(): Promise<{
   const scriptPath = join(temporaryDirectory, 'probe.ts');
   const operationsPath = join(
     packageRoot,
-    '../../internal/component-tooling/scripts/component-artifact-operations.ts',
+    '../../packages/component-tooling/scripts/component-artifact-operations.ts',
   );
   const componentDirectory = join(packageRoot, 'src/components/run-step-timeline');
   const markdownInput =

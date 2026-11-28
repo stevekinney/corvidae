@@ -20,7 +20,7 @@ export const FINGERPRINT_SOURCE_DIRECTORIES = [
   // stale reuse silently tests the wrong bytes.
   'components/cinder/scripts',
   // Cinder's generators and the stylesheet fingerprint the server imports (COR-2079).
-  'internal/component-tooling/scripts',
+  'packages/component-tooling/scripts',
   'applications/playground/scripts',
   // The playground bundles these upstream workspaces alongside the public
   // Cinder and Chat packages. The public packages already have source

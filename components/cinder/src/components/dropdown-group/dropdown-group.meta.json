@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "overlay",
   "status": "stable",
   "purpose": "Accessible group boundary that clusters related dropdown-item rows inside a dropdown-menu.",

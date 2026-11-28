@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "layout",
   "status": "beta",
   "purpose": "Resizable list-and-detail layout with a list header, keyboard selection, the open item kept in the URL, a remembered divider width, and a one-pane-at-a-time layout on narrow containers.",

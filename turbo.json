@@ -41,10 +41,10 @@
         "!$TURBO_ROOT$/components/cinder/src/tokens/index.json",
         "!$TURBO_ROOT$/components/cinder/src/tokens/registry.generated.*",
         "!$TURBO_ROOT$/components/cinder/src/tokens/runtime/*.generated.*",
-        "$TURBO_ROOT$/internal/component-tooling/scripts/**",
-        "!$TURBO_ROOT$/internal/component-tooling/scripts/**/*.test.ts",
-        "$TURBO_ROOT$/internal/component-tooling/src/**",
-        "!$TURBO_ROOT$/internal/component-tooling/src/**/*.test.ts",
+        "$TURBO_ROOT$/packages/component-tooling/scripts/**",
+        "!$TURBO_ROOT$/packages/component-tooling/scripts/**/*.test.ts",
+        "$TURBO_ROOT$/packages/component-tooling/src/**",
+        "!$TURBO_ROOT$/packages/component-tooling/src/**/*.test.ts",
         "$TURBO_ROOT$/package.json"
       ]
     },
@@ -1301,7 +1301,7 @@
         "$TURBO_ROOT$/components/*/*.json",
         "$TURBO_ROOT$/components/cinder/scripts/**",
         "$TURBO_ROOT$/scripts/**/*.ts",
-        "$TURBO_ROOT$/internal/typescript/**",
+        "$TURBO_ROOT$/configuration/typescript/**",
         "$TURBO_ROOT$/testing/testing/src/**",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/bun-test-selected.ts",

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "domain",
   "status": "beta",
   "purpose": "One bordered group of compact approval rows under a heading such as \"2 approvals waiting\", for two or more approvals that wait together.",

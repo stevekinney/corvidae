@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "stable",
   "purpose": "Collapsible tree visualization of an arbitrary JSON value with hard depth and byte caps and a fallback for oversized payloads.",

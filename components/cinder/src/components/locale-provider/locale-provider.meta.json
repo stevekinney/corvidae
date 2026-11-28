@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "layout",
   "status": "stable",
   "purpose": "Context provider that supplies a shared locale and text direction default to locale-aware descendant components.",

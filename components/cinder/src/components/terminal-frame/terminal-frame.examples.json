@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/examples.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/examples.schema.json",
   "component": "terminal-frame",
   "import": "@lostgradient/cinder",
   "examples": [

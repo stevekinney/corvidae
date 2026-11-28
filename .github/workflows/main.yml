@@ -105,7 +105,7 @@ jobs:
             components/*/test-output/junit/*.xml
             packages/*/test-output/junit/*.xml
             testing/*/test-output/junit/*.xml
-            internal/*/test-output/junit/*.xml
+            configuration/*/test-output/junit/*.xml
             plugins/*/test-output/junit/*.xml
             scripts/browser-fixtures/test-output/junit/*.xml
           if-no-files-found: error
@@ -219,7 +219,7 @@ jobs:
             components/*/test-output/junit/*.xml
             packages/*/test-output/junit/*.xml
             testing/*/test-output/junit/*.xml
-            internal/*/test-output/junit/*.xml
+            configuration/*/test-output/junit/*.xml
             plugins/*/test-output/junit/*.xml
             scripts/browser-fixtures/test-output/junit/*.xml
           if-no-files-found: error

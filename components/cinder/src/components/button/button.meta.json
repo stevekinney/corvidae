@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "action",
   "status": "stable",
   "purpose": "Primary interactive control for triggering actions or rendering an anchor styled as a button via href.",

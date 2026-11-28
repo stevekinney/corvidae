@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "typography",
   "status": "beta",
   "purpose": "Renders Markdown source as formatted content, synchronously by default, with opt-in lazy math, code blocks, scrolling tables, and optional link and image policies.",

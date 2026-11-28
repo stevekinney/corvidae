@@ -18,7 +18,7 @@ const GATED_PACKAGES = [
   'components/cinder',
   'components/chat',
   'components/editor',
-  'internal/component-tooling',
+  'packages/component-tooling',
 ].map((path) => join(REPOSITORY_ROOT, path));
 
 function readPackageScripts(packageRoot = PACKAGE_ROOT): Record<string, string> {
@@ -29,7 +29,7 @@ function readPackageScripts(packageRoot = PACKAGE_ROOT): Record<string, string> 
   return manifest.scripts as Record<string, string>;
 }
 
-const TOOLING = '../../internal/component-tooling/scripts';
+const TOOLING = '../../packages/component-tooling/scripts';
 
 const ENTRY_POINT = 'export function run() {}\nif (import.meta.main) run();\n';
 const LIBRARY = 'export function helper() {}\n';
@@ -96,7 +96,7 @@ describe("Cinder's own gates", () => {
       ).toContain(`${TOOLING}/check-prop-conventions.ts src/lib/components`);
     }
     expect(
-      findGateInvocations(readPackageScripts(join(REPOSITORY_ROOT, 'internal/component-tooling')), [
+      findGateInvocations(readPackageScripts(join(REPOSITORY_ROOT, 'packages/component-tooling')), [
         'test',
       ]),
     ).toContain('scripts/check-component-css-token-usage.ts --strict');

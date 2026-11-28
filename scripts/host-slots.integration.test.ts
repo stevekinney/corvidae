@@ -361,7 +361,7 @@ describe('host slots', () => {
     const root = join(import.meta.dir, '..');
     const manifests = ['package.json'];
     for await (const path of new Bun.Glob(
-      '{applications,components,packages,testing,internal,plugins}/*/package.json',
+      '{applications,components,packages,testing,configuration,plugins}/*/package.json',
     ).scan({ cwd: root })) {
       manifests.push(path);
     }

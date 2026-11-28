@@ -1,6 +1,6 @@
 # @lostgradient/component-tooling
 
-The generators, checks, scaffolding, schemas and component-free test helpers that component packages share (COR-2079). Cinder's package scripts run them by path (`bun ../../internal/component-tooling/scripts/<script>.ts`) from the package's own directory, so a check reads the package it runs in.
+The generators, checks, scaffolding, schemas and component-free test helpers that component packages share (COR-2079). Cinder's package scripts run them by path (`bun ../../packages/component-tooling/scripts/<script>.ts`) from the package's own directory, so a check reads the package it runs in.
 
 ## What it holds
 

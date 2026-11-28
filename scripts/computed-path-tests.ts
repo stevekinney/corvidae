@@ -68,8 +68,8 @@ export const computedPathRules: readonly ComputedPathRule[] = [
   },
   {
     changed: [CINDER, CHAT, EDITOR],
-    workspace: 'internal/component-tooling',
-    tests: ['internal/component-tooling/src/styles/border-tier-classification.test.ts'],
+    workspace: 'packages/component-tooling',
+    tests: ['packages/component-tooling/src/styles/border-tier-classification.test.ts'],
     reads: 'every component library source file by a path it computes',
   },
   {

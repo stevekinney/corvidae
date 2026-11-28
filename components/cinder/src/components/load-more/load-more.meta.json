@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "navigation",
   "status": "stable",
   "purpose": "Sentinel-based infinite-scroll trigger with an always-visible button fallback and accessible status states.",

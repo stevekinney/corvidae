@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "navigation",
   "status": "stable",
   "purpose": "Single wayfinding item that renders as an anchor when given href or as a button when given onclick, with active-state aria-current.",

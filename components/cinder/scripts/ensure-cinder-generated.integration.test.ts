@@ -31,13 +31,13 @@ function fixture(directory = 'components/cinder'): { root: string; cinder: strin
   };
   touch(join(cinder, 'src/tokens/sets/colors.tokens.json'), 1_000);
   mkdirSync(join(cinder, 'scripts'), { recursive: true });
-  touch(join(root, 'internal/component-tooling/scripts/generate.ts'), 1_000);
-  touch(join(root, 'internal/component-tooling/src/schema.ts'), 1_000);
+  touch(join(root, 'packages/component-tooling/scripts/generate.ts'), 1_000);
+  touch(join(root, 'packages/component-tooling/src/schema.ts'), 1_000);
   touch(join(root, 'package.json'), 1_000);
   writeFileSync(join(root, 'package.json'), JSON.stringify({ workspaces: ['components/*'] }));
   utimesSync(join(root, 'package.json'), 1_000, 1_000);
   touch(join(root, 'bun.lock'), 1_000);
-  touch(join(root, 'internal/component-tooling/package.json'), 1_000);
+  touch(join(root, 'packages/component-tooling/package.json'), 1_000);
   touch(join(cinder, 'package.json'), 1_000);
   writeFileSync(join(cinder, 'package.json'), JSON.stringify({ name: CINDER_PACKAGE_NAME }));
   utimesSync(join(cinder, 'package.json'), 1_000, 1_000);

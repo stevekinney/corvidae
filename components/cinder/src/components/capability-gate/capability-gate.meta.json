@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "feedback",
   "status": "alpha",
   "purpose": "Present feature availability and next action for browser permission or support states, with accessible status text and focus management.",

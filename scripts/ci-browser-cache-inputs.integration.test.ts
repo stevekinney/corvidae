@@ -226,16 +226,16 @@ describe.each([
       expect(
         Object.hasOwn(
           cinder.inputs,
-          '../../internal/component-tooling/scripts/generate-component-artifacts.ts',
+          '../../packages/component-tooling/scripts/generate-component-artifacts.ts',
         ),
       ).toBe(true);
       expect(
-        Object.hasOwn(cinder.inputs, '../../internal/component-tooling/src/schema-types.ts'),
+        Object.hasOwn(cinder.inputs, '../../packages/component-tooling/src/schema-types.ts'),
       ).toBe(true);
       expect(Object.hasOwn(tooling.inputs, 'package.json')).toBe(true);
       for (const path of paths) {
         if (
-          !/^internal\/component-tooling\/(?:scripts|src)\//u.test(path) ||
+          !/^packages\/component-tooling\/(?:scripts|src)\//u.test(path) ||
           /\.test\.[cm]?[jt]s$/u.test(path)
         )
           continue;
@@ -245,8 +245,8 @@ describe.each([
         );
       }
       const metadataInputs = configuration.tasks['metadata']?.inputs ?? [];
-      expect(metadataInputs).toContain('$TURBO_ROOT$/internal/component-tooling/scripts/**');
-      expect(metadataInputs).toContain('$TURBO_ROOT$/internal/component-tooling/src/**');
+      expect(metadataInputs).toContain('$TURBO_ROOT$/packages/component-tooling/scripts/**');
+      expect(metadataInputs).toContain('$TURBO_ROOT$/packages/component-tooling/src/**');
     }
     expect(reachableRootHelpers).toContain(ENSURE_CINDER_GENERATED);
     // The group starts this fixed executable by path, which the static import graph cannot see.

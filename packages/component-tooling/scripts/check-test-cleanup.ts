@@ -56,7 +56,7 @@ const packageRoot = resolve(scriptDirectory, '../../../components/cinder');
 const srcRoot = resolve(packageRoot, 'src');
 const repoRoot = resolve(srcRoot, '..', '..', '..');
 
-const preloadPath = resolve(packageRoot, '../../internal/component-tooling/scripts/preload.ts');
+const preloadPath = resolve(packageRoot, '../../packages/component-tooling/scripts/preload.ts');
 const globalCleanupPath = resolve(
   repoRoot,
   'testing',

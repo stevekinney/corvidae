@@ -1,6 +1,6 @@
 import { basename, join } from 'node:path';
 import ts from 'typescript';
-import type { ComponentSchemaOutput } from '../../../internal/component-tooling/scripts/generate-component-schema.ts';
+import type { ComponentSchemaOutput } from '../../../packages/component-tooling/scripts/generate-component-schema.ts';
 
 export type PropertyOptions = {
   type?: 'Array' | 'Boolean' | 'Number' | 'Object';

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "domain",
   "status": "alpha",
   "purpose": "Durable human-in-the-loop approval surface for reviewing risky tool operations before they execute.",

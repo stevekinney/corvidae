@@ -8,7 +8,7 @@ import {
   CORPUS_TIER,
   allUseSites,
   classify,
-} from '../../../../internal/component-tooling/src/styles/border-tier-non-border-uses.test.ts';
+} from '../../../../packages/component-tooling/src/styles/border-tier-non-border-uses.test.ts';
 
 const PACKAGE_ROOT = join(import.meta.dirname, '..', '..');
 
