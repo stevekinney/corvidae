@@ -1,0 +1,49 @@
+{
+  "issue": "COR-2825",
+  "branch": "worktree-wf_c89916f9-3e7-3",
+  "checkedAt": "7f4e8d5cdd1dafe5f0a566831d9e24415d1a7c6b",
+  "briefVersion": "8e23d8fede16",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "inline-confirm.svelte renders Button variant=ghost iconOnly quiet label={cancelLabel} with X from icons/index.ts; unit test 'dismisses with a quiet X named by cancelLabel' finds role button name Cancel, empty text outside .cinder-sr-only, order [dismiss, confirm]; 18/18 pass"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "existing focus, Escape, focus-restore and focusVisible tests pass unchanged; the new test clicks the X and asserts onCancel and close"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Implemented on the branch; NOT run on this host (browser suites barred), awaiting coordinator CI. inline-confirm-strip.playwright.ts written (375px, hasTouch, elementFromPoint 21px above, below, startward); not run: browser suites are kept off this host, pending coordinator CI"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "two-press markup untouched; two-press unit tests pass; inline-confirm-two-press.playwright.ts not run on this host, pending CI"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Implemented on the branch; NOT run on this host (browser suites barred), awaiting coordinator CI. default inline-confirm fixture already draws prompt, quiet X, danger confirm (fixture unchanged); design review capture not run on this host, coordinator owns it"
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "README (regenerated with generate-component-artifacts --fix), a11y.md, meta.json, examples.json and types.ts describe the X and cancelLabel as accessible name; cinder lint passed inside focused-checks exit 0"
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "components/editor review-editor tests 218/218 pass (bun ../../scripts/bun-test.ts --conditions browser --conditions svelte src/lib/components/review-editor after bun run metadata)"
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "Implemented on the branch; NOT run on this host (browser suites barred), awaiting coordinator CI. visual baselines not regenerated: Docker visual runs are kept off this host; coordinator to run CINDER_TEST_COMPONENTS=inline-confirm bun run test:browser:update:docker -- --source <head>"
+    }
+  ]
+}
