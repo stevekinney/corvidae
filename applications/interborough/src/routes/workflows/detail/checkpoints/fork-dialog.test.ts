@@ -649,6 +649,13 @@ describe('ForkDialog fork preview (COR-2538)', () => {
     await waitFor(() => expect(getByText(/^Forked as/)).not.toBeNull());
     const link = getByRole('link', { name: 'order-processing' });
     expect(link.getAttribute('href')).toContain('wf-forked-1');
+    const openInNewTab = new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+    });
+    link.dispatchEvent(openInNewTab);
+    expect(openInNewTab.defaultPrevented).toBe(false);
     expect(container.textContent).toContain('started just now');
     expect(container.textContent).not.toContain('wf-forked-1');
   });

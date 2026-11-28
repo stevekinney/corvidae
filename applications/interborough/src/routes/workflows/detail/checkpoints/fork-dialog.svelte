@@ -345,11 +345,6 @@
     forkMutation.mutate({ fromStep: parsedStep, selection });
   }
 
-  function viewForkedRun(): void {
-    const id = forkMutation.data?.id;
-    if (id !== undefined) router.navigate(workflowDetailPath(id));
-  }
-
   const revisionConflict = $derived(
     forkMutation.isError ? isForkRevisionConflict(forkMutation.error) : false,
   );
@@ -532,13 +527,7 @@
     <div class="weft-fork-dialog__success">
       <span>
         {RUN_FORK_PREVIEW_COPY.forkedAs}
-        <a
-          href={router.href(workflowDetailPath(forkMutation.data.id))}
-          onclick={(event) => {
-            event.preventDefault();
-            viewForkedRun();
-          }}>{workflowType}</a
-        >, {RUN_FORK_PREVIEW_COPY.startedJustNow}
+        <a href={router.href(workflowDetailPath(forkMutation.data.id))}>{workflowType}</a>, {RUN_FORK_PREVIEW_COPY.startedJustNow}
       </span>
     </div>
   {:else}
