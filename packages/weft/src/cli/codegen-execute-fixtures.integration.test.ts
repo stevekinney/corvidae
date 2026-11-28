@@ -223,9 +223,9 @@ function typecheckConsumerProject(configurationPath: string): readonly string[] 
 
 function preparePackedWorkspace(root: string): string {
   const packageDirectory = join(root, 'packages', 'weft');
-  const typescriptDirectory = join(root, 'internal', 'typescript');
+  const typescriptDirectory = join(root, 'configuration', 'typescript');
   copyDirectory(PACKAGE_ROOT, packageDirectory);
-  copyDirectory(join(REPOSITORY_ROOT, 'internal', 'typescript'), typescriptDirectory);
+  copyDirectory(join(REPOSITORY_ROOT, 'configuration', 'typescript'), typescriptDirectory);
 
   const rootPackageJsonPath = join(root, 'package.json');
   const rootPackageJson = readJsonFile(join(REPOSITORY_ROOT, 'package.json'));
