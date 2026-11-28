@@ -2866,6 +2866,18 @@
       ]
     },
     {
+      "path": "host/host.ts",
+      "classification": "boundary",
+      "transport": "Native application documents and published assets",
+      "owner": "Interborough host",
+      "reason": "The host reaches the candidate router only at the existing document and asset boundaries.",
+      "expressions": [
+        "openHostDocuments candidate.fetch(request)",
+        "openHostDocuments candidate.fetch(request)",
+        "unclaimed candidate.fetch(request)"
+      ]
+    },
+    {
       "path": "host/shared-browser-sign-in.ts",
       "classification": "boundary",
       "transport": "Shared-origin sign-in and private server fetch",
@@ -3113,6 +3125,7 @@
     "app/view-probes.ts @lostgradient/bureau-sdk type { CatalogOperations }",
     "app/view-probes.ts @lostgradient/weft type { HttpClient }",
     "app/views.ts ../lib/scopes.svelte.ts type { AuthorizationScope }",
+    "host/a2a-peer-recovery-caller.ts ./host.ts { startHost, type HostOptions }",
     "host/a2a-peer-recovery-caller.ts @lostgradient/weft/a2a { createEgressPolicy }",
     "host/a2a-peers.ts @lostgradient/weft/a2a { createA2APeerClient, type A2APeerUpdate, type EgressPolicy }",
     "host/a2a-push.ts @lostgradient/weft { Outbox }",
@@ -3161,6 +3174,7 @@
     "host/cli-runs.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-runs.ts @lostgradient/bureau-sdk type { CatalogOperationTypes }",
     "host/cli.ts ./cli-client.ts { executeCli }",
+    "host/dev.ts ./host.ts { startHost, type Host, type HostOptions }",
     "host/engine-proxy.ts @lostgradient/weft { AUTHORIZATION_SCOPES }",
     "host/host-authority.ts @lostgradient/weft { WEFT_SCOPE_VOCABULARY }",
     "host/host-diagnostics.ts @lostgradient/weft type { RegistryAgnosticEngine, WeftServer }",
@@ -3184,8 +3198,12 @@
     "host/panel-review-eligibility.ts ./shared-browser-sign-in.ts type { createSharedBrowserSignIn }",
     "host/panel-routes.ts @lostgradient/weft { MCP_LEGACY_PROTOCOL_VERSION }",
     "host/refund-operations.ts @lostgradient/weft { WorkflowClaimUnavailableError }",
+    "host/serve.ts ./host.ts { startHost }",
     "host/shell-request.ts ./engine-proxy.ts { isEngineRequestPath }",
+    "host/showcase-agents.ts ./host.ts type { ExtraAgents }",
+    "host/showcase.ts ./host.ts type { HostOptions, RunAgentLookup }",
     "host/showcase.ts @lostgradient/weft type { AlertingOptions }",
+    "host/stub-provider.ts ./host.ts type { HostOptions }",
     "host/tool-source-routes.ts ./openapi-inspection.ts { inspectOpenApiAddress, inspectOpenApiSpec, type OpenApiFetchFailure, type OpenApiInspection, }",
     "host/tool-source-routes.ts ./tool-source-manager.ts { DEFAULT_PROBE_TIMEOUT_MILLISECONDS, HOST_OAUTH_CALLBACK_ROUTE, ToolSourceAuditError, ToolSourceExistsError, ToolSourceInputError, ToolSourceNotEditableError, ToolSourceOwnerOnlyError, ToolSourceWriteLockedError, type ToolSourceManager, type ToolSourcePendingCallback, }",
     "lib/a2a-calls.ts ./bureau-audit.ts { queryAudit, type AuditRecord }",

@@ -75,3 +75,5 @@ export function snapshot<Value>(registration: SnapshotRegistration<Value>) {
   const state = getNavigationState();
   onMount(() => state.registerSnapshot?.(registration));
 }
+
+export type { ApplicationState } from "../data/contract.ts";

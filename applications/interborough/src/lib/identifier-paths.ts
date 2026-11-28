@@ -143,3 +143,15 @@ export function withEscapedIdentifier(
     ? { ...found.params, [escape.parameter]: identifier }
     : found.params;
 }
+
+/** Keep different identifiers carried on the same placeholder path in distinct rendered views. */
+export function identifierViewKey(
+  pathname: string,
+  matched: Parameters<typeof withEscapedIdentifier>[0] | null,
+  search: URLSearchParams,
+): string {
+  const params = matched === null ? undefined : withEscapedIdentifier(matched, search);
+  return matched !== null && params !== matched.params
+    ? `${pathname}#${JSON.stringify(params)}`
+    : pathname;
+}

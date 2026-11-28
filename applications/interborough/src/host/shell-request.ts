@@ -8,6 +8,15 @@ import { isEngineRequestPath } from './engine-proxy.ts';
 
 /** The prefixes whose paths belong to something other than the router: a miss there is a 404. */
 const NON_SHELL_PREFIXES = ['/__dev', '/assets', '/bureau', '/host'] as const;
+const NON_CANDIDATE_DOCUMENT_PREFIXES = [
+  ...NON_SHELL_PREFIXES,
+  '/auth',
+  '/oauth',
+  '/.well-known',
+  '/triggers',
+  '/_remote',
+  '/key-admin',
+] as const;
 
 function hasPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
@@ -46,4 +55,15 @@ export function isShellNavigation(request: Request): boolean {
   if (isEngineRequestPath(pathname)) return false;
   if (NON_SHELL_PREFIXES.some((prefix) => hasPrefix(pathname, prefix))) return false;
   return acceptsHtml(request.headers.get('accept') ?? '');
+}
+
+/** Unclaimed reads go to the candidate for native documents, assets and 404s. */
+export function isDocumentCandidateRequest(request: Request): boolean {
+  if ((request.method !== 'GET' && request.method !== 'HEAD') || request.headers.has('upgrade'))
+    return false;
+  const { pathname } = new URL(request.url);
+  return (
+    !isEngineRequestPath(pathname) &&
+    !NON_CANDIDATE_DOCUMENT_PREFIXES.some((prefix) => hasPrefix(pathname, prefix))
+  );
 }

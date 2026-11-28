@@ -65,6 +65,54 @@ test('routes shared Reviews documents to the private server and local navigation
   expect(await localResponse.text()).toBe('shell');
 });
 
+test('candidate assets coexist with the guarded private build and preserve private refusals', async () => {
+  using storage = new MemoryStorage();
+  const shared = createSharedBrowserSignIn(options, workspace, storage);
+  const candidateRequests: string[] = [];
+  const registered = sharedBrowserRoutes(
+    shared,
+    {} as never,
+    {
+      async fetch(request) {
+        const path = new URL(request.url).pathname;
+        if (path.endsWith('/private.js')) return new Response('private asset');
+        if (path.endsWith('/refused.js')) return new Response(null, { status: 403 });
+        return new Response(null, { status: 404 });
+      },
+    },
+    async () => new Response('ordinary document'),
+    (request) => {
+      const path = new URL(request.url).pathname;
+      candidateRequests.push(path);
+      return path.endsWith('/candidate.js')
+        ? new Response('candidate asset')
+        : new Response(null, { status: 404 });
+    },
+  );
+  if (!('/_assets/*' in registered)) throw new Error('Asset route was not registered');
+  const { GET: asset } = registered['/_assets/*'] as {
+    GET: (request: Request) => Promise<Response>;
+  };
+  const receive = (name: string, host = 'settings.example') =>
+    asset(new Request(`http://127.0.0.1/_assets/${name}`, { headers: { host } }));
+
+  const privateAsset = await receive('private.js');
+  expect(await privateAsset.text()).toBe('private asset');
+  const refused = await receive('refused.js');
+  expect(refused.status).toBe(403);
+  const candidate = await receive('candidate.js');
+  expect(await candidate.text()).toBe('candidate asset');
+  const localCandidate = await receive('candidate.js', 'localhost');
+  expect(await localCandidate.text()).toBe('candidate asset');
+  const missing = await receive('missing.js');
+  expect(missing.status).toBe(404);
+  expect(candidateRequests).toEqual([
+    '/_assets/candidate.js',
+    '/_assets/candidate.js',
+    '/_assets/missing.js',
+  ]);
+});
+
 test('shared browser composition requires HTTPS and refuses missing sessions', async () => {
   using storage = new MemoryStorage();
   expect(() =>

@@ -66,6 +66,71 @@ async function principalOver(host: Host, headers: HeadersInit = {}): Promise<Pri
 }
 
 describe('the host’s listener', () => {
+  test('gives only candidate document requests to an opt-in application', async () => {
+    const home = await scratch('interborough-candidate-home-');
+    const buildDirectory = await createBuild();
+    const calls: string[] = [];
+    let disposed = false;
+    const host = await startHost({
+      environment: { INTERBOROUGH_HOME: home },
+      port: 0,
+      buildDirectory,
+      plugins: [],
+      openDocumentCandidate: async () => ({
+        async fetch(request) {
+          const path = new URL(request.url).pathname;
+          calls.push(`${request.method} ${path}`);
+          return path === '/settings'
+            ? new Response(request.method === 'HEAD' ? null : 'candidate document')
+            : new Response(null, { status: 404 });
+        },
+        async dispose() {
+          disposed = true;
+        },
+      }),
+    });
+    hosts.push(host);
+    const request = (path: string, method = 'GET', headers: HeadersInit = {}) =>
+      fetch(new URL(path, host.url), {
+        method,
+        headers: { Accept: 'text/html', ...Object.fromEntries(new Headers(headers)) },
+      });
+    const document = await request('/settings');
+    expect(await document.text()).toBe('candidate document');
+    const head = await request('/settings', 'HEAD');
+    expect(head.status).toBe(200);
+    const principal = await request('/api/v1/principal');
+    expect(principal.headers.get('content-type')).toContain('json');
+    for (const path of [
+      '/no-document',
+      '/_assets/missing.js',
+      '/assets/missing.js',
+      '/host/missing',
+      '/bureau/missing',
+      '/triggers/missing',
+      '/auth/callback',
+      '/oauth/token',
+      '/.well-known/missing',
+      '/_remote/missing',
+      '/key-admin/missing',
+    ]) {
+      const missing = await request(path);
+      expect(missing.status, path).toBe(404);
+    }
+    const write = await request('/settings', 'POST');
+    expect(write.status).toBe(404);
+    const wrongHost = await request('/settings', 'GET', { Host: 'wrong.example' });
+    expect(wrongHost.status).toBe(403);
+    expect(calls).toEqual([
+      'GET /settings',
+      'HEAD /settings',
+      'GET /no-document',
+      'GET /_assets/missing.js',
+    ]);
+    await host.close();
+    expect(disposed).toBe(true);
+  });
+
   test('waits for the browser build before binding, and releases the home if it fails', async () => {
     const home = await scratch('interborough-home-');
     const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response() });

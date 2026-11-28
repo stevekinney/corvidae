@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2626",
+  "branch": "steve/composable-velveteen-native-parity",
+  "checkedAt": "b17154610f846d620e95cce08bcec27e52b90f14",
+  "briefVersion": "6a8c0e3edd30",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "routes.test.ts and real listener browser matrix of 53 routes"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "real listener browser parity and retained-v2.log, chunk-v4.log; CI browser suite required"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "host.test.ts, shared-browser-sign-in.test.ts and real TLS listener proof"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "opt-in openDocumentCandidate; production legacy dispatch retained"
+    }
+  ]
+}
