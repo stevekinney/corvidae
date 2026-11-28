@@ -1,9 +1,9 @@
 {
   "issue": "COR-2732",
   "branch": "chef/config-move",
-  "checkedAt": "786e8256e252a90d4155d48f195ecd1b43399810",
+  "checkedAt": "472b3caeaa4a3a3904bc79ab24055979f4ad3abd",
   "briefVersion": "126bf6507d9e",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "packages/component-tooling; one dead export (generate-component-metadata.ts, no file, no consumer) removed at coordinator request"
+      "evidence": "packages/component-tooling; dead export generate-component-metadata.ts (no file, no consumer) removed at coordinator request; other exports unchanged"
     },
     {
       "id": "AC3",
@@ -23,7 +23,7 @@
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "turbo, workflows, guards updated; fixture token check via tooling tokens:fixtures"
+      "evidence": "turbo, workflows, guards updated; fixture token check via tooling tokens:fixtures. Coordinator decision: export-reach guard treats ./scripts/ and ./test/ subpaths as tooling entry points (not bundled), with a unit test; no skip, no allowlist entry"
     },
     {
       "id": "AC5",
@@ -32,8 +32,8 @@
     },
     {
       "id": "AC6",
-      "status": "needs-decision",
-      "evidence": "frozen install, preflight, lint:root, test:self pass; test:self:slow 991 pass 1 fail (export-reach guard) pending decision"
+      "status": "met-on-branch",
+      "evidence": "frozen install, preflight, lint:root 0, test:self 0, test:self:slow 993 pass 0 fail, check-export-runtime-reach 0, focused-checks 8 passed"
     }
   ]
 }
