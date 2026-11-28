@@ -7,9 +7,9 @@
  * box or the line changes size (a smaller window, a phone's keyboard, a font that loads). A scroll
  * made once, when the line mounts, is not enough: the page is often made smaller afterwards.
  *
- * A transcript that rests at its end and whose box shrinks is kept there by its own pin
- * (`keepPinnedThroughResize`); this placement is for the line when the transcript is not at its end
- * (a person pressed a control above the last message), which that pin never moves.
+ * Where the transcript rests when its box changes size is the pin's to say
+ * (`keepPinnedThroughResize`); this placement is for the line, which that pin steps aside for while
+ * the line is kept in view (`commandFailureHeld`).
  *
  * The placement only ever moves the transcript toward its end, so it cannot pull against the pin
  * to the last message, and it gives the transcript up for good the moment the person scrolls,
@@ -64,7 +64,7 @@ function commandFailureUnit(line: HTMLElement): BlockEdges {
  * Chat's stylesheet already says what the edges hide (a header the host lays over the start, the
  * fade at the end).
  */
-function transcriptReadingBox(transcript: HTMLElement): BlockEdges {
+export function transcriptReadingBox(transcript: HTMLElement): BlockEdges {
   const box = transcript.getBoundingClientRect();
   const style = getComputedStyle(transcript);
   const start = Number.parseFloat(style.scrollPaddingTop);
@@ -80,8 +80,8 @@ const held = new WeakSet<HTMLElement>();
 
 /**
  * Whether a refusal is being kept in view in `transcript`. While it is, that placement owns the
- * transcript's resting position: the pin to the true end (`keepPinnedThroughResize`) yields to it.
- * The two rest on different edges. The pin puts the end of the scrollable area at the box's end;
+ * transcript's resting position: the pin (`keepPinnedThroughResize`) yields to it.
+ * The two can rest on different edges. The pin can put the end of the scrollable area at the box's end;
  * the placement puts the refusal line, the news, at the reading box's end, and only moves on to
  * the true end when that still shows the controls the refusal belongs to. A unit taller than the
  * reading box keeps its line, and the pin going on to the true end would push the controls above

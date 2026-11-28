@@ -110,12 +110,15 @@
   // that overflows and is scrolled to its end; `fits` is the route's own sequence, a transcript that
   // fits its box exactly at scroll position 0 (a test sizes the box to the content), which the
   // notice then makes overflow by a few pixels: the browser does not anchor a scroll position of 0,
-  // and no message arrives to pin it, so only the box changing size can say the end moved.
+  // and no message arrives to pin it, so only the box changing size can say the end moved. `empty`
+  // is a transcript with no message, whose welcome fits its box until a test makes the box smaller.
   const pinnedResizeMode = new URLSearchParams(globalThis.location.search).get('pinnedResize');
-  const pinnedResizeEnabled = pinnedResizeMode === 'long' || pinnedResizeMode === 'fits';
+  const pinnedResizeEnabled =
+    pinnedResizeMode === 'long' || pinnedResizeMode === 'fits' || pinnedResizeMode === 'empty';
   let pinnedStreamDropped = $state(false);
   const pinnedResizeHistory = (() => {
     let history = createConversation({ id: 'pinned-resize' });
+    if (pinnedResizeMode === 'empty') return history;
     for (const order of pinnedResizeMode === 'long' ? ['4398', '4399', '4400', '4401'] : []) {
       history = appendAssistantMessage(
         appendUserMessage(history, `Look up order ${order}`),
@@ -723,6 +726,9 @@
         conversation={pinnedResizeOutcome.conversation}
         capabilities={{ attachments: false }}
         messageTurnState={(message) => turnStateOf(pinnedResizeOutcome, message)}
+        emptyTitle="What should the assistant do?"
+        emptyDescription="It looks up orders and says what is open on the account."
+        emptyPrompts={['Look up order 4471', 'What is still open on the account?']}
         onSubmit={handleSubmit}
         onRetryConnection={() => false}
       />

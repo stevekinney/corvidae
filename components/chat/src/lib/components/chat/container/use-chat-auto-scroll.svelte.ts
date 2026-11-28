@@ -1,7 +1,11 @@
 import { tick, untrack } from 'svelte';
 import type { Message } from '../conversation-model.ts';
 import { commandFailureHeld } from './command-failure-reveal.ts';
-import { keepPinnedThroughResize } from './keep-pinned-through-resize.ts';
+import {
+  keepPinnedThroughResize,
+  startSideRest,
+  type PinnedThroughResize,
+} from './keep-pinned-through-resize.ts';
 import { isAtBottom as checkIsAtBottom } from './scroll-utilities.ts';
 import type { useChatHistoryLifecycle } from './use-chat-history-lifecycle.svelte.ts';
 import type { useChatHistoryRestoration } from './use-chat-history-restoration.svelte.ts';
@@ -30,6 +34,13 @@ export interface UseChatAutoScrollOptions {
   getHistoryLifecycle: () => AutoScrollHistoryLifecycle;
   getHistoryRestoration: () => AutoScrollHistoryRestoration;
   getIsEditing: () => boolean;
+  /**
+   * Whether a row resting at the end of the reading box is clear of the transcript's end fade:
+   * true where the fade is a mask (the stylesheet keeps the fade's size clear) or nothing fades,
+   * false where an overlay fades the end with no room kept clear (the default surface with
+   * `scrollFadeVisible`).
+   */
+  getStartSideRestAllowed: () => boolean;
 }
 
 export interface UseChatAutoScrollReturn {
@@ -51,6 +62,8 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
   let previousLastMessageId = untrack(() => options.getMessages().at(-1)?.id);
   let previousVirtualExtent: number | null = null;
   let prependSuppressed = false;
+  // The record of where the transcript that is mounted now rests (`keepPinnedThroughResize`).
+  let pin: PinnedThroughResize | null = null;
 
   const resetPrependSuppression = (): void => {
     prependSuppressed = false;
@@ -98,7 +111,9 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
     virtualizer.scrollToOffset(virtualizer.scrollSize, { behavior: 'instant' });
   };
 
-  const applyBottomCorrection = (): void => {
+  // Rests the transcript: at its true end, or, for one that rests from its start, at the smallest
+  // scroll that clears its last row. Every programmatic rest goes through here and is recorded.
+  const applyBottomCorrection = (fromStart = false): void => {
     const viewport = options.getViewport();
     if (!viewport) return;
     if (
@@ -114,9 +129,17 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
     if (options.getScrollState().isUserScrolling) return;
     if (options.getIsVirtualized()) {
       correctVirtualizedViewport(viewport);
+      pin?.rested(false);
+      return;
+    }
+    const top = fromStart && options.getStartSideRestAllowed() ? startSideRest(viewport) : null;
+    if (top !== null) {
+      viewport.scrollTo({ top, behavior: 'instant' });
+      pin?.rested(true);
       return;
     }
     viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' });
+    pin?.rested(false);
   };
 
   const scheduleBottomCorrection = (isTranscriptAppend: boolean): (() => void) => {
@@ -126,7 +149,9 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
       : tick();
     void waitForBottomTarget.then(() => {
       if (cancelled) return undefined;
-      applyBottomCorrection();
+      // Anything that arrived takes the transcript to its true end. With nothing new (the same
+      // thread read again, the transcript drawn again), it is rested again where it already rests.
+      applyBottomCorrection(pin?.restsUnchangedFromStart() ?? false);
       return undefined;
     });
     return () => {
@@ -192,16 +217,23 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
     return undefined;
   });
 
-  // A transcript at its end stays there when its own box changes size with no message arriving: a
-  // notice that grows the composer, a keyboard, a smaller window. Only a new message pinned it before.
+  // Where the transcript rests when its own box changes size with no message arriving: a notice that
+  // grows the composer, a keyboard, a smaller window. Only a new message rested it before.
   $effect(() => {
     const viewport = options.getViewport();
     if (!viewport) return undefined;
-    return keepPinnedThroughResize(viewport, () => {
-      // A refusal being kept in view rests the transcript itself (`commandFailureHeld`): the true end
-      // would push the controls it belongs to above the box, where nothing pulls them back.
-      if (!commandFailureHeld(viewport)) applyBottomCorrection();
+    const kept = keepPinnedThroughResize(viewport, (fromStart) => {
+      // An empty or welcome transcript has no last row to rest on: it is never moved.
+      if (options.getMessages().length === 0) return;
+      // A refusal being kept in view rests the transcript itself (`commandFailureHeld`).
+      if (commandFailureHeld(viewport)) return;
+      applyBottomCorrection(fromStart);
     });
+    pin = kept;
+    return () => {
+      kept.stop();
+      if (pin === kept) pin = null;
+    };
   });
 
   return { resetPrependSuppression };

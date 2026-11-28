@@ -6,6 +6,7 @@
 
 /// <reference lib="dom" />
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import {
@@ -64,10 +65,16 @@ afterEach(() => {
 });
 
 /** A Chat whose transcript has the scroll geometry `layout` says (happy-dom has none of its own). */
-function renderChat(layout: { scrollHeight: number; clientHeight: number; scrollTop: number }) {
+function renderChat(
+  layout: { scrollHeight: number; clientHeight: number; scrollTop: number },
+  props: Record<string, unknown> = {},
+  empty = false,
+) {
   const asked = appendUserMessage(createConversationHistory({ id: 'pinned' }), 'Look up 4398');
-  const conversation = appendAssistantMessage(asked, 'It shipped on Monday.');
-  const view = render(Chat, { id: 'pinned', variant: 'transcript', conversation });
+  const conversation = empty
+    ? createConversationHistory({ id: 'pinned' })
+    : appendAssistantMessage(asked, 'It shipped on Monday.');
+  const view = render(Chat, { id: 'pinned', variant: 'transcript', conversation, ...props });
   const timeline = view.container.querySelector<HTMLElement>('.chat-timeline');
   if (timeline === null) throw new Error('Chat drew no transcript.');
   const state = { ...layout };
@@ -87,7 +94,11 @@ function renderChat(layout: { scrollHeight: number; clientHeight: number; scroll
     },
   });
   timeline.scrollTo = ((options: ScrollToOptions) => {
-    state.scrollTop = Math.min(options.top ?? 0, state.scrollHeight - state.clientHeight);
+    // As a browser clamps it: a transcript that fits cannot scroll.
+    state.scrollTop = Math.max(
+      Math.min(options.top ?? 0, state.scrollHeight - state.clientHeight),
+      0,
+    );
   }) as typeof timeline.scrollTo;
   /** The box changed size, as the browser tells every observer that watches the transcript. */
   const boxChanged = (): void => {
@@ -95,7 +106,18 @@ function renderChat(layout: { scrollHeight: number; clientHeight: number; scroll
       if (entry.targets.includes(timeline)) entry.callback();
     }
   };
-  return { timeline, state, boxChanged };
+  /** Gives the transcript and its last row boxes, so the last row ends 240 from the start. */
+  const layOut = (): void => {
+    timeline.getBoundingClientRect = () =>
+      ({ top: 0, bottom: state.clientHeight, height: state.clientHeight }) as DOMRect;
+    const last = [...timeline.children]
+      .filter((child) => child.classList.contains('chat-message-wrapper'))
+      .at(-1) as HTMLElement | undefined;
+    if (last === undefined) throw new Error('No row.');
+    last.getBoundingClientRect = () =>
+      ({ top: 180 - state.scrollTop, bottom: 240 - state.scrollTop, height: 60 }) as DOMRect;
+  };
+  return { view, conversation, timeline, state, boxChanged, layOut };
 }
 
 describe('Chat — a transcript at its end stays at its end when its box shrinks', () => {
@@ -125,6 +147,124 @@ describe('Chat — a transcript at its end stays at its end when its box shrinks
     state.clientHeight = 320;
     boxChanged();
     expect(state.scrollTop).toBe(480);
+  });
+
+  test('an empty transcript is not scrolled when its box shrinks', () => {
+    const { state, boxChanged } = renderChat(
+      { scrollHeight: 300, clientHeight: 200, scrollTop: 0 },
+      {},
+      true,
+    );
+    boxChanged();
+    expect(state.scrollTop).toBe(0);
+  });
+
+  test('a transcript that fit rests with its last row at the end of its reading box, not at its true end', () => {
+    const { state, boxChanged, layOut } = renderChat({
+      scrollHeight: 300,
+      clientHeight: 400,
+      scrollTop: 0,
+    });
+    layOut();
+    boxChanged();
+    expect(state.scrollTop).toBe(0);
+    state.clientHeight = 200;
+    boxChanged();
+    expect(state.scrollTop).toBe(40);
+    state.clientHeight = 230;
+    boxChanged();
+    expect(state.scrollTop).toBe(10);
+  });
+
+  test('with nothing new arriving, the transcript is rested again where it rests', async () => {
+    const { view, conversation, state, boxChanged, layOut } = renderChat({
+      scrollHeight: 300,
+      clientHeight: 400,
+      scrollTop: 0,
+    });
+    layOut();
+    boxChanged();
+    state.clientHeight = 200;
+    boxChanged();
+    expect(state.scrollTop).toBe(40);
+    await view.rerender({ conversation: { ...conversation } });
+    await tick();
+    await tick();
+    expect(state.scrollTop).toBe(40);
+  });
+
+  test('what arrives with the same number of messages still takes the transcript to its true end, and it is followed after', async () => {
+    const { view, conversation, timeline, state, boxChanged, layOut } = renderChat({
+      scrollHeight: 300,
+      clientHeight: 400,
+      scrollTop: 0,
+    });
+    layOut();
+    boxChanged();
+    state.clientHeight = 200;
+    boxChanged();
+    expect(state.scrollTop).toBe(40);
+    // The last row grows by 60 (a streamed chunk, an outcome row): the same messages, more to hold.
+    const last = [...timeline.children]
+      .filter((child) => child.classList.contains('chat-message-wrapper'))
+      .at(-1) as HTMLElement;
+    last.getBoundingClientRect = () =>
+      ({ top: 180 - state.scrollTop, bottom: 300 - state.scrollTop, height: 120 }) as DOMRect;
+    state.scrollHeight = 360;
+    await view.rerender({ conversation: { ...conversation } });
+    await tick();
+    await tick();
+    // Its true end, as an arrival always went.
+    expect(state.scrollTop).toBe(160);
+    // The scroll is heard, and then the box shrinks: it is still followed.
+    timeline.dispatchEvent(new Event('scroll'));
+    state.clientHeight = 180;
+    boxChanged();
+    expect(state.scrollTop).toBe(180);
+  });
+
+  test('a rest made with nothing new is recorded: its scroll does not end the rest', async () => {
+    const { view, conversation, timeline, state, boxChanged, layOut } = renderChat({
+      scrollHeight: 300,
+      clientHeight: 400,
+      scrollTop: 0,
+    });
+    layOut();
+    boxChanged();
+    state.clientHeight = 200;
+    boxChanged();
+    expect(state.scrollTop).toBe(40);
+    await view.rerender({ conversation: { ...conversation } });
+    await tick();
+    await tick();
+    timeline.dispatchEvent(new Event('scroll'));
+    state.clientHeight = 180;
+    boxChanged();
+    expect(state.scrollTop).toBe(60);
+  });
+
+  test('on the default surface with the scroll fade, a transcript that fit rests at its true end', () => {
+    const { state, boxChanged, layOut } = renderChat(
+      { scrollHeight: 300, clientHeight: 400, scrollTop: 0 },
+      { scrollFadeVisible: true },
+    );
+    layOut();
+    boxChanged();
+    state.clientHeight = 200;
+    boxChanged();
+    expect(state.scrollTop).toBe(100);
+  });
+
+  test('on the transparent surface with the scroll fade, it rests from its start', () => {
+    const { state, boxChanged, layOut } = renderChat(
+      { scrollHeight: 300, clientHeight: 400, scrollTop: 0 },
+      { scrollFadeVisible: true, surfaceMode: 'transparent' },
+    );
+    layOut();
+    boxChanged();
+    state.clientHeight = 200;
+    boxChanged();
+    expect(state.scrollTop).toBe(40);
   });
 });
 

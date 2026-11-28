@@ -1344,6 +1344,7 @@
     getHistoryLifecycle: () => historyLifecycle,
     getHistoryRestoration: () => getHistoryRestoration(),
     getIsEditing: () => commandActions.isEditing,
+    getStartSideRestAllowed: () => !(scrollFadeVisible && surfaceMode === 'default'),
   });
 
   // ==========================================================================
@@ -3397,8 +3398,8 @@
     scroll-padding-block-end: calc(var(--cinder-space-2) + var(--_chat-timeline-clear-end, 0px));
     padding: var(--cinder-chat-timeline-padding) var(--cinder-chat-reading-inline-padding);
     /* Where the end edge fades (`.chat-timeline-mask-fade`), the last row rests that far above the
-     * transcript's end too, so its actions are never dimmed at rest (the transcript rests at its
-     * end: see `useChatAutoScroll`); 0 where nothing fades. */
+     * transcript's end too, so its actions are never dimmed at rest, at its true end or at the
+     * smallest scroll that clears it (`useChatAutoScroll`); 0 where nothing fades. */
     padding-block-end: calc(
       var(--cinder-chat-timeline-padding) + var(--_chat-timeline-clear-end, 0px)
     );
@@ -3560,10 +3561,11 @@
    * at stake: the timeline paints nothing of its own, so the faded content shows the host's own
    * background behind it, whatever that is. An edge fades only while there is content past it (the
    * `data-cinder-overflows` attributes `overflowFadeEdges` sets), so a transcript at its end never
-   * dims its last message (COR-2327). That holds only where the transcript rests at its true end,
-   * the end of the scrollable area with the clear space after the last row: a new message pins it
-   * there, and `useChatAutoScroll` keeps it there when its box changes size with no message (a
-   * notice in the composer, a keyboard, a smaller window), which scrolls nothing by itself. */
+   * dims its last message (COR-2327). Short of its true end the fade is drawn, so the transcript
+   * rests with its last row above it: a new message pins it to its true end, and `useChatAutoScroll`
+   * rests it again when its box changes size with no message (a notice in the composer, a
+   * keyboard, a smaller window), at its true end or, for a conversation that showed from its
+   * start, at the smallest scroll that clears the last row. */
   .chat-timeline-mask-fade {
     --_chat-timeline-fade-size: var(--cinder-space-6);
     --_chat-timeline-clear-end: var(--_chat-timeline-fade-size);
