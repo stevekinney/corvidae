@@ -409,6 +409,19 @@ describe('VideoPlayer playback speed', () => {
     const renamed = getByRole('button', { name: 'Playback speed, 0.5 times' });
     expect(renamed.textContent?.trim()).toBe('0.5x');
   });
+
+  test('offers each positive, finite rate once', async () => {
+    const { getByRole, getAllByRole } = render(VideoPlayer, {
+      src: SOURCE,
+      label: LABEL,
+      playbackRates: [1, 1, -1, Number.NaN, 0, 2],
+    });
+    await fireEvent.click(getByRole('button', { name: 'Playback speed, normal' }));
+    expect(getAllByRole('menuitemradio').map((item) => item.textContent?.trim())).toEqual([
+      '1x',
+      '2x',
+    ]);
+  });
 });
 
 describe('VideoPlayer bound currentTime', () => {

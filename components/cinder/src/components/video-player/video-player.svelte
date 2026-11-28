@@ -74,6 +74,11 @@
 
   const markerPosition = (time: number): string => `${(time / player.duration) * 100}%`;
 
+  // A media element throws on a negative rate, so the menu offers only positive, finite ones.
+  const offeredRates = $derived(
+    [...new Set(playbackRates)].filter((rate) => Number.isFinite(rate) && rate > 0),
+  );
+
   let playbackRate = $state(1);
 
   const rateText = (rate: number): string => `${rate}x`;
@@ -146,7 +151,7 @@
         {rateText(playbackRate)}
       </Dropdown.Trigger>
       <Dropdown.Menu>
-        {#each playbackRates as rate (rate)}
+        {#each offeredRates as rate (rate)}
           <Dropdown.Item
             itemRole="menuitemradio"
             checked={rate === playbackRate}
