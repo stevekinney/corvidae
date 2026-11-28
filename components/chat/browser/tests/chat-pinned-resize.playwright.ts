@@ -225,13 +225,31 @@ async function setBox(page: Page, height: number): Promise<void> {
   }, height);
 }
 
-/** The transcript rests from its start with its last row clear: where the rule says, and no further. */
-function expectStartSideRest(now: Painted): void {
+/**
+ * What the `settles` fixture's last row (the panel in the trailing slot, with no padding of its own)
+ * leaves between the rest and the true end. The true end is 45 past the row's end: the row gap of 8,
+ * the sentinel of 1 and the transcript's end padding of 36 (12 and the fade's 24). The rest puts the
+ * row's end on the reading box's end, 32 above the box's end (8 of scroll padding and the fade's 24).
+ * So a transcript at its rest is 45 - 32 = 13 short of its true end, not at it.
+ */
+const SETTLES_DISTANCE_TO_END = 45 - 32;
+
+/**
+ * The transcript rests from its start with its last row clear: where the rule says, and no further.
+ * `distanceToEnd` is how far short of its true end the rule's position is: at least 16 where the last
+ * row is an outcome anchor or a tool row (they keep padding of their own, which the row's end
+ * excludes), or the given number, within 2 pixels, where the layout says exactly.
+ */
+function expectStartSideRest(now: Painted, distanceToEnd?: number): void {
   expect(now.overflow, 'the setup must overflow').toBeGreaterThan(2);
   expect(now.inFade).toBeLessThanOrEqual(1);
   expect(now.scrollTop).toBeGreaterThan(0);
   // Not at its true end: that would push the start of the conversation out of view.
-  expect(now.distanceToEnd).toBeGreaterThanOrEqual(16);
+  if (distanceToEnd === undefined) {
+    expect(now.distanceToEnd).toBeGreaterThanOrEqual(16);
+  } else {
+    expect(Math.abs(now.distanceToEnd - distanceToEnd)).toBeLessThanOrEqual(2);
+  }
 }
 
 test.describe('a pinned transcript whose box shrinks', () => {
@@ -319,7 +337,7 @@ test.describe('a pinned transcript whose box shrinks', () => {
     await sizeBox(page, 2);
     await settlePanel(page);
     await settled(page);
-    expectStartSideRest(await painted(page));
+    expectStartSideRest(await painted(page), SETTLES_DISTANCE_TO_END);
   });
 
   test('the same rows in the same box rest in one place, whichever arrived first', async ({
@@ -344,7 +362,7 @@ test.describe('a pinned transcript whose box shrinks', () => {
     const rested = async (): Promise<void> => {
       await settled(page);
       const now = await painted(page);
-      expectStartSideRest(now);
+      expectStartSideRest(now, SETTLES_DISTANCE_TO_END);
       rests.push(now.scrollTop);
     };
 

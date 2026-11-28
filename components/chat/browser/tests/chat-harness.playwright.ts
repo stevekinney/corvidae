@@ -163,6 +163,31 @@ async function openHarness(
  * between a click and Svelte flushing the log mutation (a bare `.count()`
  * after `.click()` can read 0 before the flush and fail spuriously).
  */
+/**
+ * How far the end of the transcript's last row is below the end of its reading box (its box less
+ * its scroll padding): about 0 where a transcript rests, which is where Jump to latest lands. A row
+ * takes no room when it draws nothing, the sentinel is not a row, and a row's own end padding is room
+ * it keeps from the row after it.
+ */
+async function lastRowEndFromReadingEnd(timeline: Locator): Promise<number> {
+  return timeline.evaluate((element) => {
+    let row = element.lastElementChild;
+    while (
+      row !== null &&
+      (row.classList.contains('chat-bottom-sentinel') || row.getBoundingClientRect().height < 0.5)
+    ) {
+      row = row.previousElementSibling;
+    }
+    if (row === null) throw new Error('The transcript has no row.');
+    const padding = Number.parseFloat(getComputedStyle(row).paddingBottom);
+    const rowEnd = row.getBoundingClientRect().bottom - (Number.isFinite(padding) ? padding : 0);
+    const scrollPadding = Number.parseFloat(getComputedStyle(element).scrollPaddingBottom);
+    const readingEnd =
+      element.getBoundingClientRect().bottom - (Number.isFinite(scrollPadding) ? scrollPadding : 0);
+    return rowEnd - readingEnd;
+  });
+}
+
 async function expectLoggedEvent(harness: Locator, event: string): Promise<void> {
   await expect(
     harness.locator(`[data-testid="event-log-entry"][data-event="${event}"]`).first(),
@@ -3211,13 +3236,12 @@ test.describe('chat harness — scroll, unread, jump', () => {
       await resolveHistory.dispatchEvent('click');
 
       await expectLoggedEvent(harness, 'onloadhistory');
-      await expect
-        .poll(async () =>
-          timeline.evaluate((element) =>
-            Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop),
-          ),
-        )
-        .toBeLessThan(2);
+      // Jump to latest lands where every rest does: the last row ends on the end of the reading
+      // box (COR-2725), not at the true end, which is the clear space after it further on. What the
+      // test is about is that the pending history anchor does not carry the transcript back up
+      // when the earlier messages arrive: then the last row would end far below the reading box.
+      await expect.poll(async () => lastRowEndFromReadingEnd(timeline)).toBeGreaterThanOrEqual(-2);
+      await expect.poll(async () => lastRowEndFromReadingEnd(timeline)).toBeLessThanOrEqual(1);
     } finally {
       await dispose();
     }

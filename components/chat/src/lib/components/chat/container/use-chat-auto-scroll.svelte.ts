@@ -144,7 +144,9 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
       pin?.rested();
       return;
     }
-    viewport.scrollTo({ top: restingTop(viewport), behavior: 'instant' });
+    // A transcript a person took to its true end is theirs there: it is followed to its end.
+    const top = pin?.takenToEnd() === true ? viewport.scrollHeight : restingTop(viewport);
+    viewport.scrollTo({ top, behavior: 'instant' });
     pin?.rested();
   };
 

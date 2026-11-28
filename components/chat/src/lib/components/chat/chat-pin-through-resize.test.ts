@@ -470,6 +470,39 @@ describe('Chat — where a transcript rests is read from its layout, whatever or
   });
 });
 
+describe('Chat — a transcript a person took to its true end is theirs there', () => {
+  test('it stays at its end through a late row change, a box change and a message', async () => {
+    const { view, conversation, timeline, state, boxChanged, rowChanged, layOut, rowGrows } =
+      renderChat({ scrollHeight: 300, clientHeight: 400, scrollTop: 0 }, MASKED);
+    layOut();
+    await corrected();
+    boxChanged();
+    state.clientHeight = 200;
+    boxChanged();
+    expect(state.scrollTop).toBe(40);
+
+    // The person scrolls to the very end.
+    timeline.dispatchEvent(new window.Event('pointerdown'));
+    state.scrollTop = state.scrollHeight - state.clientHeight;
+    timeline.dispatchEvent(new window.Event('scroll'));
+    expect(state.scrollTop).toBe(100);
+
+    // A panel in the last row sizes itself late: the end is followed, not the rest (320).
+    rowGrows(520);
+    rowChanged();
+    expect(state.scrollTop).toBe(380);
+    timeline.dispatchEvent(new window.Event('scroll'));
+    // The box changes: still at its end.
+    state.clientHeight = 180;
+    boxChanged();
+    expect(state.scrollTop).toBe(state.scrollHeight - state.clientHeight);
+    // A history stabilization or the same messages again: still at its end.
+    await view.rerender({ conversation: { ...conversation } });
+    await corrected();
+    expect(state.scrollTop).toBe(state.scrollHeight - state.clientHeight);
+  });
+});
+
 describe('Chat — Jump to latest rests where every other rest does', () => {
   test('after Jump to latest, a streamed chunk moves the transcript on and never back', async () => {
     const { view, timeline, state, boxChanged, rowChanged, layOut, rowGrows } = renderChat(

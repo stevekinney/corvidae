@@ -7,7 +7,9 @@
  * same rows in the same box therefore rest at the same scroll position whatever order they, their
  * sizes and the box arrived in. Nothing is remembered but where the transcript was left: one that
  * is where it rests, or at its true end, is rested again; one a person took anywhere else is theirs
- * and is never moved, until it is brought back.
+ * and is never moved, until it is brought back. The one exception is explicit: a person who took
+ * the transcript to its true end (their input, then a scroll that lands there) has it there, and it
+ * is followed to its end as it grows, not carried back to the rest (`takenToEnd`).
  *
  * The transcript is rested again whenever its layout changes: its own box (a notice that grows the
  * composer, a keyboard, a smaller window, a phone turned) or the box of any of its rows (a message
@@ -26,9 +28,18 @@ const REST_TOLERANCE = 2;
 export interface PinnedThroughResize {
   /** The page rested the transcript itself: it rests where it is now. */
   rested(): void;
+  /**
+   * Whether a person took the transcript to its true end and it has not left it: it is theirs there,
+   * so every rest that follows (a late row, a box that changes, a history stabilization) puts it at
+   * its true end, never back to the rest.
+   */
+  takenToEnd(): boolean;
   /** Stops looking. */
   stop(): void;
 }
+
+/** The inputs by which a person takes the transcript: the same four the placements read. */
+const PERSON_INPUTS = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
 
 /**
  * Where what the transcript's last row draws ends, in viewport pixels; `null` when it draws no row.
@@ -73,14 +84,17 @@ export function keepPinnedThroughResize(
   transcript: HTMLElement,
   rest: () => void,
 ): PinnedThroughResize {
-  if (typeof ResizeObserver === 'undefined') return { rested: () => {}, stop: () => {} };
+  if (typeof ResizeObserver === 'undefined') {
+    return { rested: () => {}, takenToEnd: () => false, stop: () => {} };
+  }
   const reach = (): number => transcript.scrollHeight - transcript.clientHeight;
   // Everything the transcript holds, the clear space at its end too, is inside a box that is laid out.
   const fitsWhole = (): boolean => transcript.clientHeight > 0 && reach() <= REST_TOLERANCE;
+  const atTrueEnd = (): boolean => reach() - transcript.scrollTop <= REST_TOLERANCE;
   // Where a transcript nobody took can be found: where it rests from its start, or at its true end
   // (a placement, Jump to latest or the person put it there, and it is rested again from there).
   const atRest = (): boolean => {
-    if (reach() - transcript.scrollTop <= REST_TOLERANCE) return true;
+    if (atTrueEnd()) return true;
     const side = startSideRest(transcript);
     return side !== null && Math.abs(transcript.scrollTop - side) <= REST_TOLERANCE;
   };
@@ -96,8 +110,23 @@ export function keepPinnedThroughResize(
   const heard = (): void => {
     const top = transcript.scrollTop;
     if (fitsWhole()) following = true;
-    else if (Math.abs(top - restingTop) > REST_TOLERANCE) following = atRest();
+    else if (Math.abs(top - restingTop) > REST_TOLERANCE) {
+      following = atRest();
+      // A person who took the transcript to its true end has it there: a scroll that lands at the
+      // end, after their input and before the page rested it again, is theirs, and one that leaves
+      // the end gives it back.
+      if (!atTrueEnd()) toEnd = false;
+      else if (input) toEnd = true;
+    }
     restingTop = top;
+  };
+  // A person's input in the transcript since the page last rested it. Not a timer: a scroll heard
+  // after the input is the person's, and the page's own rest ends the claim.
+  let input = false;
+  // Whether a person took the transcript to its true end, and it has not left it since.
+  let toEnd = false;
+  const personInput = (): void => {
+    input = true;
   };
   // The layout changed. A transcript that rests where it was left is rested again; one that has
   // been taken back toward its start in this frame, with its scroll not heard yet, is not (the
@@ -136,16 +165,21 @@ export function keepPinnedThroughResize(
         });
   rows?.observe(transcript, { childList: true });
   transcript.addEventListener('scroll', heard, { passive: true });
+  for (const type of PERSON_INPUTS)
+    transcript.addEventListener(type, personInput, { passive: true });
 
   return {
     rested: () => {
       restingTop = transcript.scrollTop;
       following = true;
+      input = false;
     },
+    takenToEnd: () => toEnd,
     stop: () => {
       layout.disconnect();
       rows?.disconnect();
       transcript.removeEventListener('scroll', heard);
+      for (const type of PERSON_INPUTS) transcript.removeEventListener(type, personInput);
     },
   };
 }

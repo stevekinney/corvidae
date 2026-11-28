@@ -89,7 +89,8 @@ function transcriptOf(layout: { rowsEnd: number; clientHeight: number; scrollTop
     asked += 1;
     if (refuse) return;
     const end = extent() - state.clientHeight;
-    state.scrollTop = startSideRest(transcript) ?? end;
+    // As the page does: a transcript a person took to its true end is followed to it.
+    state.scrollTop = kept.takenToEnd() ? end : (startSideRest(transcript) ?? end);
     kept.rested();
   });
   /** The transcript is scrolled to `top`, and the scroll is heard. */
@@ -270,6 +271,41 @@ describe('keepPinnedThroughResize', () => {
       changed(transcript);
       expect(state.scrollTop).toBe(780);
     }
+  });
+
+  test('a person who took the transcript to its true end has it there: a late row follows it to its end', () => {
+    // 520 of rows and 60 of end space in a box of 400: it rests at 120, and its true end is 180.
+    const { transcript, row, state, scrolledTo, kept } = transcriptOf({
+      rowsEnd: 520,
+      clientHeight: 400,
+    });
+    transcript.dispatchEvent(new Event('pointerdown'));
+    scrolledTo(180);
+    expect(kept.takenToEnd()).toBe(true);
+    state.rowsEnd = 560;
+    changed(row);
+    // Followed to its true end (620 less 400), not carried back to the rest (160).
+    expect(state.scrollTop).toBe(220);
+    expect(kept.takenToEnd()).toBe(true);
+    // Its own rest was a scroll too, heard late: the claim stands.
+    transcript.dispatchEvent(new Event('scroll'));
+    expect(kept.takenToEnd()).toBe(true);
+  });
+
+  test('a scroll to the true end with no person behind it is not theirs, and leaving the end gives it back', () => {
+    const first = transcriptOf({ rowsEnd: 520, clientHeight: 400 });
+    first.scrolledTo(180);
+    expect(first.kept.takenToEnd()).toBe(false);
+    first.state.rowsEnd = 560;
+    changed(first.row);
+    expect(first.state.scrollTop).toBe(160);
+
+    const second = transcriptOf({ rowsEnd: 520, clientHeight: 400 });
+    second.transcript.dispatchEvent(new Event('wheel'));
+    second.scrolledTo(180);
+    expect(second.kept.takenToEnd()).toBe(true);
+    second.scrolledTo(100);
+    expect(second.kept.takenToEnd()).toBe(false);
   });
 
   test('something that takes the transcript back toward its start in the frame of a change is not undone', () => {
