@@ -93,13 +93,19 @@ export function startSideRest(transcript: HTMLElement): number | null {
 /**
  * Looks again whenever the layout of `transcript` changes (its box, or the box of any of its
  * rows), until `stop` is called. While the transcript rests where it was left, `rest` rests it
- * again the way the page does, and is the page's to refuse (no message yet, a refusal or a waiting
- * approval kept in view, a person editing, history loading, a smooth scroll the person started). A
- * refusal does not end the rest: it is asked again at the next change.
+ * again the way the page does, and is the page's to refuse (no message yet, a refusal kept in
+ * view, a person editing, history loading, a smooth scroll the person started). A refusal does not
+ * end the rest: it is asked again at the next change.
+ *
+ * `held` is asked first, at every change: whether something else rests the transcript by a rule of
+ * its own (a waiting approval's placement), which it then does there, in the same frame, before
+ * anything is painted. While it does, the transcript is wherever that left it, whether or not it
+ * is where the pin would rest it, and `rest` is not asked.
  */
 export function keepPinnedThroughResize(
   transcript: HTMLElement,
   rest: () => void,
+  held: () => boolean = () => false,
 ): PinnedThroughResize {
   if (typeof ResizeObserver === 'undefined') {
     return { rested: () => {}, takenToEnd: () => false, pageScrolled: () => {}, stop: () => {} };
@@ -157,6 +163,10 @@ export function keepPinnedThroughResize(
   // browser pulling it back to the end of a box that grew, or holding the end of the content in
   // place, is no one taking it).
   const settle = (): void => {
+    if (held()) {
+      restingTop = transcript.scrollTop;
+      return;
+    }
     if (fitsWhole()) following = true;
     else if (following && transcript.scrollTop < restingTop - REST_TOLERANCE && !atRest()) {
       following = false;
@@ -165,9 +175,14 @@ export function keepPinnedThroughResize(
     restingTop = transcript.scrollTop;
   };
 
+  // The transcript's own box is watched by what it has room for (its content box: its size, and
+  // the room a header laid over its start takes). A row is watched by what it takes from the rows
+  // after it (its border box), so one that only gains padding, as a row does when its styles land
+  // after it is drawn, is seen too.
   const layout = new ResizeObserver(settle);
   layout.observe(transcript);
-  for (const row of transcript.children) layout.observe(row);
+  const watch = (row: Element): void => layout.observe(row, { box: 'border-box' });
+  for (const row of transcript.children) watch(row);
   // Rows come and go: each new one is watched (and resting again is asked for as it is first
   // measured), and one taken away changes no box that is watched, so it is looked at here.
   const rows =
@@ -177,7 +192,7 @@ export function keepPinnedThroughResize(
           let removed = false;
           for (const record of records) {
             for (const node of record.addedNodes) {
-              if (node instanceof Element) layout.observe(node);
+              if (node instanceof Element) watch(node);
             }
             for (const node of record.removedNodes) {
               if (!(node instanceof Element)) continue;

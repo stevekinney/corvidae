@@ -484,8 +484,8 @@ export function focusPendingApproval(root: ParentNode | null | undefined): boole
   return card.ownerDocument.activeElement === card;
 }
 
-/** How many arrival placements hold each transcript right now. */
-const placementHolds = new WeakMap<HTMLElement, number>();
+/** The arrival placements that hold each transcript right now: what each does to place again. */
+const placementHolds = new WeakMap<HTMLElement, Set<() => void>>();
 
 /**
  * Says a waiting approval's arrival placement holds `transcript`, until the function it returns is
@@ -494,16 +494,28 @@ const placementHolds = new WeakMap<HTMLElement, number>();
  * back from the other side. Chat's own placement holds it, and so does a host that places the
  * approval itself by the same rule (`approvalPlacementShift`); each lets go when the person takes
  * the transcript.
+ *
+ * `placeAgain` places the approval again against the layout as it is now, before it returns. The
+ * pin, which watches the transcript's box and the box of each of its rows, calls it in the frame
+ * one of them changes, and when a message arrives (`heldApprovalLayoutChanged`), so no frame is
+ * painted with the layout settled and the card where the layout before it had left it. A
+ * placement's own observers see only the transcript and its card, and a pass that waits for an
+ * animation frame comes a frame late: later still under a page clock that owns animation frames.
  */
-export function holdApprovalPlacement(transcript: HTMLElement): () => void {
-  placementHolds.set(transcript, (placementHolds.get(transcript) ?? 0) + 1);
-  let held = true;
+export function holdApprovalPlacement(
+  transcript: HTMLElement,
+  placeAgain: () => void = () => {},
+): () => void {
+  // Each hold is its own entry, whatever it was given to place with.
+  const hold = (): void => placeAgain();
+  const holds = placementHolds.get(transcript) ?? new Set<() => void>();
+  holds.add(hold);
+  placementHolds.set(transcript, holds);
   return () => {
-    if (!held) return;
-    held = false;
-    const left = (placementHolds.get(transcript) ?? 1) - 1;
-    if (left > 0) placementHolds.set(transcript, left);
-    else placementHolds.delete(transcript);
+    holds.delete(hold);
+    if (holds.size === 0 && placementHolds.get(transcript) === holds) {
+      placementHolds.delete(transcript);
+    }
   };
 }
 
@@ -512,9 +524,21 @@ export function holdApprovalPlacement(transcript: HTMLElement): () => void {
  * placement holds it, and an approval still waits in it. A hold a host has not let go of once the
  * approval was decided (somewhere else, with no input here) holds nothing.
  */
-export function approvalPlacementHeld(transcript: HTMLElement): boolean {
+function approvalPlacementHeld(transcript: HTMLElement): boolean {
   return (
     placementHolds.has(transcript) &&
     transcript.querySelector(PENDING_APPROVAL_CARD_SELECTOR) !== null
   );
+}
+
+/**
+ * The layout of `transcript` changed, or a message arrived in it: every placement that holds it
+ * places its approval again, now. Says whether one holds it, which is whether the pin stands
+ * aside.
+ */
+export function heldApprovalLayoutChanged(transcript: HTMLElement): boolean {
+  if (!approvalPlacementHeld(transcript)) return false;
+  // A copy: a placement may let go while it places.
+  for (const placeAgain of Array.from(placementHolds.get(transcript) ?? [])) placeAgain();
+  return true;
 }

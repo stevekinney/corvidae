@@ -17,6 +17,7 @@ import {
   createConversationHistory,
 } from './builders.ts';
 import { holdApprovalPlacement } from './container/chat-approval-review.ts';
+import { keepCommandFailureInView } from './container/command-failure-reveal.ts';
 import { resolveTurnOutcome, turnStateOf } from './message/turn-outcome.ts';
 import { CINDER_NOTES_METADATA_KEY } from './utilities/index.ts';
 
@@ -470,6 +471,299 @@ describe('Chat — where a transcript rests is read from its layout, whatever or
   });
 });
 
+describe('Chat — a waiting approval is placed again in the frame its layout changes', () => {
+  /**
+   * The animation frames the page asks for, run only when a test says so: a page whose clock owns
+   * them (a design-review capture), or the frame a browser paints before the next one runs.
+   */
+  const frames: Array<(() => void) | undefined> = [];
+  const originalFrame = globalThis.requestAnimationFrame;
+  const originalCancel = globalThis.cancelAnimationFrame;
+  afterEach(() => {
+    globalThis.requestAnimationFrame = originalFrame;
+    globalThis.cancelAnimationFrame = originalCancel;
+    frames.length = 0;
+  });
+  const holdFrames = (): void => {
+    globalThis.requestAnimationFrame = ((callback: () => void) => {
+      frames.push(callback);
+      return frames.length;
+    }) as typeof requestAnimationFrame;
+    globalThis.cancelAnimationFrame = (handle: number): void => {
+      frames[handle - 1] = undefined;
+    };
+  };
+  /** Runs every frame asked for, and the frames those ask for, until none is left. */
+  const runFrames = (): void => {
+    for (let index = 0; index < frames.length && index < 60; index += 1) {
+      const frame = frames[index];
+      frames[index] = undefined;
+      frame?.();
+    }
+  };
+  /** Runs the frames asked for so far, and not the ones those ask for: one frame of the page. */
+  const runOneFrame = (): void => {
+    const asked = frames.length;
+    for (let index = 0; index < asked; index += 1) {
+      const frame = frames[index];
+      frames[index] = undefined;
+      frame?.();
+    }
+  };
+
+  /**
+   * Chat with a waiting approval of its own, laid out as a browser would: a transcript 400 tall
+   * that holds `content` in all, and a card 200 tall that starts `cardTop` from the transcript's
+   * start. Nothing is laid over the transcript, so a card that fits rests at the transcript's end
+   * wherever the end still shows it whole (`approvalArrivalRestShift`).
+   */
+  async function renderApproval(layout: { content: number; cardTop: number }) {
+    holdFrames();
+    const view = render(Chat, {
+      id: 'pinned',
+      variant: 'transcript',
+      conversation: approvalConversation(),
+      adapter: { sendMessage: async () => undefined, resolveToolApproval: async () => undefined },
+      ...MASKED,
+    });
+    const timeline = view.container.querySelector<HTMLElement>('.chat-timeline')!;
+    const state = { ...layout, clientHeight: 400, scrollTop: 0 };
+    const extent = (): number => Math.max(state.content, state.clientHeight);
+    Object.defineProperty(timeline, 'scrollHeight', { get: extent });
+    Object.defineProperty(timeline, 'clientHeight', { get: () => state.clientHeight });
+    Object.defineProperty(timeline, 'scrollTop', {
+      get: () => state.scrollTop,
+      // As a browser clamps it.
+      set: (value: number) => {
+        state.scrollTop = Math.min(Math.max(value, 0), extent() - state.clientHeight);
+      },
+    });
+    timeline.scrollTo = ((options: ScrollToOptions) => {
+      timeline.scrollTop = options.top ?? 0;
+    }) as typeof timeline.scrollTo;
+    timeline.getBoundingClientRect = () =>
+      ({ top: 0, bottom: state.clientHeight, height: state.clientHeight }) as DOMRect;
+    await corrected();
+    const card = view.container.querySelector<HTMLElement>('.cinder-approval-card')!;
+    const cardBox = (): DOMRect =>
+      ({
+        top: state.cardTop - state.scrollTop,
+        bottom: state.cardTop + 200 - state.scrollTop,
+        height: 200,
+      }) as DOMRect;
+    card.getBoundingClientRect = cardBox;
+    // The row that labels the card is part of the unit that is placed: it starts where the card does.
+    for (const label of timeline.querySelectorAll<HTMLElement>('.cinder-tool-call-rail__row')) {
+      label.getBoundingClientRect = cardBox;
+    }
+    const rowAbove = [...timeline.children].find((child) =>
+      child.classList.contains('chat-message-wrapper'),
+    );
+    if (rowAbove === undefined || rowAbove.contains(card))
+      throw new Error('No row above the card.');
+    const changed = (element: Element): void => {
+      for (const entry of observers) {
+        if (entry.targets.includes(element)) entry.callback();
+      }
+    };
+    return { view, timeline, card, state, rowAbove, changed };
+  }
+
+  test('rows above the card that take their size after it was placed: the card is placed again in that frame (thirty tool calls, 1280)', async () => {
+    // 600 in a box of 400, the card from 300 to 500: it rests at the transcript's end, 200.
+    const { timeline, state, rowAbove, changed } = await renderApproval({
+      content: 600,
+      cardTop: 300,
+    });
+    changed(timeline);
+    runFrames();
+    expect(state.scrollTop).toBe(200);
+    // The rows above the card take their final size, 70 more. No node is added, and neither the
+    // transcript's box nor the card's changes: only the box of a row above the card does.
+    state.content = 670;
+    state.cardTop = 370;
+    changed(rowAbove);
+    // Placed where the rule says (the end, 270) in the frame the layout changed: no animation
+    // frame has run, so no frame is painted with the rows settled and the card 70 lower.
+    expect(state.scrollTop).toBe(270);
+    runFrames();
+    expect(state.scrollTop).toBe(270);
+    cleanup();
+    observers.length = 0;
+
+    // The same rows, there in full before the card was first placed, rest in the same place.
+    const settledFirst = await renderApproval({ content: 670, cardTop: 370 });
+    settledFirst.changed(settledFirst.timeline);
+    runFrames();
+    expect(settledFirst.state.scrollTop).toBe(270);
+  });
+
+  test('a transcript that fitted whole when the card was placed and then holds 11 more rests 11 from its start (list beside the chat, 768)', async () => {
+    // 366 in a box of 400: everything is in view, and the card (150 to 350) rests at 0.
+    const { timeline, state, rowAbove, changed } = await renderApproval({
+      content: 366,
+      cardTop: 150,
+    });
+    changed(timeline);
+    runFrames();
+    expect(state.scrollTop).toBe(0);
+    // The rows above the card take their final size, 45 more: 411 in a box of 400.
+    state.content = 411;
+    state.cardTop = 195;
+    changed(rowAbove);
+    expect(state.scrollTop).toBe(11);
+    runFrames();
+    expect(state.scrollTop).toBe(11);
+    cleanup();
+    observers.length = 0;
+
+    const settledFirst = await renderApproval({ content: 411, cardTop: 195 });
+    settledFirst.changed(settledFirst.timeline);
+    runFrames();
+    expect(settledFirst.state.scrollTop).toBe(11);
+  });
+
+  test('growth above the card that equals what the placement last scrolled is still a change, not a scroll that moved nothing', async () => {
+    // 447 in a box of 400: the card (200 to 400) rests at the end, 47.
+    const { timeline, state, rowAbove, changed } = await renderApproval({
+      content: 447,
+      cardTop: 200,
+    });
+    changed(timeline);
+    runOneFrame();
+    expect(state.scrollTop).toBe(47);
+    // The rows above grow by those same 47: the card stands where it stood before the placement
+    // scrolled, which says nothing about the new layout (it is not a scroll that moved nothing).
+    state.content = 494;
+    state.cardTop = 247;
+    changed(rowAbove);
+    expect(state.scrollTop).toBe(94);
+    runFrames();
+    expect(state.scrollTop).toBe(94);
+  });
+
+  test('a person who took the transcript is not moved when a row changes after', async () => {
+    const { timeline, state, rowAbove, changed } = await renderApproval({
+      content: 600,
+      cardTop: 300,
+    });
+    changed(timeline);
+    runFrames();
+    expect(state.scrollTop).toBe(200);
+    // They wheel up to read what came before: the placement is over.
+    timeline.dispatchEvent(new Event('wheel'));
+    state.scrollTop = 40;
+    timeline.dispatchEvent(new Event('scroll'));
+    state.content = 670;
+    state.cardTop = 370;
+    changed(rowAbove);
+    runFrames();
+    expect(state.scrollTop).toBe(40);
+  });
+
+  test('while the placement holds the transcript, a move it did not make itself does not bring Jump to latest', async () => {
+    // 1000 in a box of 400, the card from 300 to 500: it rests with its bottom clear, at 112, far
+    // from the transcript's end.
+    const { view, timeline, state, changed } = await renderApproval({
+      content: 1000,
+      cardTop: 300,
+    });
+    const container = view.container.querySelector<HTMLElement>('.chat-container')!;
+    changed(timeline);
+    runFrames();
+    expect(state.scrollTop).toBe(112);
+    timeline.dispatchEvent(new Event('scroll'));
+    runFrames();
+    await tick();
+    // The placement left the transcript here, so Jump to latest is not offered.
+    expect(container.hasAttribute('data-jump-visible')).toBe(false);
+
+    // The box shrinks by 20, and in that frame something else has already put the approval where
+    // the rule says (a host's placement by the same rule, or the browser holding the content in
+    // place): the transcript is at 132 when the pin looks, and its scroll is heard after.
+    state.clientHeight = 380;
+    state.scrollTop = 132;
+    changed(timeline);
+    timeline.dispatchEvent(new Event('scroll'));
+    await tick();
+    // Not the person moving away: no control appears, whose band would shrink the transcript
+    // under the card and move it again.
+    expect(container.hasAttribute('data-jump-visible')).toBe(false);
+    expect(state.scrollTop).toBe(132);
+  });
+
+  test('a host that holds the transcript is told of every change, wherever its placement left the transcript, until it lets go', async () => {
+    const { view, conversation, timeline, state, boxChanged, rowChanged, layOut, rowGrows, rests } =
+      renderChat({ scrollHeight: 580, clientHeight: 400, scrollTop: 0 }, MASKED);
+    state.rowsEnd = 520;
+    layOut();
+    boxChanged();
+    expect(state.scrollTop).toBe(120);
+    // A card that waits, drawn by the host in a row of its own, and the host's hold.
+    const card = document.createElement('div');
+    card.className = 'cinder-approval-card';
+    card.dataset['cinderState'] = 'pending';
+    timeline.querySelector('.chat-bottom-sentinel')!.before(card);
+    let placed = 0;
+    const letGo = holdApprovalPlacement(timeline, () => {
+      placed += 1;
+    });
+    const before = rests();
+    // Its placement left the transcript where neither the pin (120) nor its true end (180) is.
+    state.scrollTop = 60;
+    timeline.dispatchEvent(new Event('scroll'));
+    rowGrows(600);
+    rowChanged();
+    expect(placed).toBe(1);
+    state.clientHeight = 380;
+    boxChanged();
+    expect(placed).toBe(2);
+    expect(state.scrollTop).toBe(60);
+    // It leaves the transcript at its true end (600 and 60 held to 380), and a message arrives:
+    // it is told of that too, and the pin still rests nothing.
+    state.scrollTop = 280;
+    timeline.dispatchEvent(new Event('scroll'));
+    await view.rerender({ conversation: appendUserMessage(conversation, 'And 4399?') });
+    // What a message that arrives schedules waits for the frame its row is laid out in.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await corrected();
+    expect(placed).toBe(3);
+    expect(rests()).toBe(before);
+    expect(state.scrollTop).toBe(280);
+    // It lets go (the person scrolled): it is told nothing more.
+    const told = placed;
+    letGo();
+    rowChanged();
+    expect(placed).toBe(told);
+  });
+
+  test('a refusal kept in view comes first: while it holds the transcript, the placement is told nothing', () => {
+    const { timeline, state, boxChanged, rowChanged, layOut } = renderChat(
+      { scrollHeight: 580, clientHeight: 400, scrollTop: 0 },
+      MASKED,
+    );
+    state.rowsEnd = 520;
+    layOut();
+    boxChanged();
+    const card = document.createElement('div');
+    card.className = 'cinder-approval-card';
+    card.dataset['cinderState'] = 'pending';
+    timeline.querySelector('.chat-bottom-sentinel')!.before(card);
+    let placed = 0;
+    holdApprovalPlacement(timeline, () => {
+      placed += 1;
+    });
+    // A command was refused, and its line is kept in view: that rests the transcript.
+    const refusalCleared = keepCommandFailureInView(timeline);
+    rowChanged();
+    boxChanged();
+    expect(placed).toBe(0);
+    refusalCleared();
+    rowChanged();
+    expect(placed).toBe(1);
+  });
+});
+
 describe('Chat — a transcript a person took to its true end is theirs there', () => {
   test('it stays at its end through a late row change, a box change and a message', async () => {
     const { view, conversation, timeline, state, boxChanged, rowChanged, layOut, rowGrows } =
@@ -571,6 +865,52 @@ describe('Chat — Jump to latest rests where every other rest does', () => {
     expect(state.scrollTop).toBe(100);
     // Never a step back.
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  test('Jump to latest lands on the rest of the box it lands in, which has the band of the control back', async () => {
+    const { view, timeline, state, boxChanged, rowChanged, layOut, rowGrows } = renderChat(
+      { scrollHeight: 900, clientHeight: 400, scrollTop: 0 },
+      MASKED,
+    );
+    // The rows end 840 from the start, in a box of 400: the rest is 440, and the true end 500.
+    state.rowsEnd = 840;
+    layOut();
+    await corrected();
+    boxChanged();
+    expect(state.scrollTop).toBe(440);
+
+    // The person wheels up to read what came before. Jump to latest shows, and the transcript
+    // gives up the band the control floats in: 40 pixels, as its end margin.
+    timeline.dispatchEvent(new Event('wheel'));
+    state.scrollTop = 0;
+    timeline.dispatchEvent(new Event('scroll'));
+    const container = view.container.querySelector<HTMLElement>('.chat-container')!;
+    await waitFor(() => expect(container.hasAttribute('data-jump-visible')).toBe(true));
+    timeline.style.marginBottom = '40px';
+    state.clientHeight = 360;
+    boxChanged();
+    expect(state.scrollTop).toBe(0);
+
+    // They jump. The rest of the box as it is now, 360 tall, is 480; the box the jump lands in is
+    // 400 tall again, and its rest is 440.
+    await fireEvent.keyDown(container, { key: 'End' });
+    expect(state.scrollTop).toBe(440);
+    // The control hides as the jump lands and the band goes back to the transcript.
+    timeline.dispatchEvent(new Event('scroll'));
+    await waitFor(() => expect(container.hasAttribute('data-jump-visible')).toBe(false));
+    timeline.style.marginBottom = '';
+    state.clientHeight = 400;
+    boxChanged();
+    timeline.dispatchEvent(new Event('scrollend'));
+    expect(state.scrollTop).toBe(440);
+
+    // A reply streams, 10 at a time: on, and never back.
+    rowGrows(850);
+    rowChanged();
+    expect(state.scrollTop).toBe(450);
+    rowGrows(860);
+    rowChanged();
+    expect(state.scrollTop).toBe(460);
   });
 });
 

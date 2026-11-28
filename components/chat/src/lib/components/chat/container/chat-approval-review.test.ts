@@ -28,6 +28,8 @@ import {
   approvalVisibleBox,
   findPendingApprovalMessageId,
   focusPendingApproval,
+  heldApprovalLayoutChanged,
+  holdApprovalPlacement,
   nextPendingApprovalDeadline,
   pendingApprovalCard,
   pendingApprovalMessageIds,
@@ -761,5 +763,82 @@ describe('approvalArrivalRestShift, a unit that fits under a header', () => {
     expect(
       approvalArrivalRestShift({ top: 220, bottom: 420 }, box, 0, APPROVAL_BOTTOM_CLEARANCE, true),
     ).toBe(0);
+  });
+});
+
+describe('a placement that holds the transcript is told when its layout changes', () => {
+  /** A transcript, with a card that waits in it when `waiting`. */
+  function transcriptWith(waiting: boolean): { transcript: HTMLElement; card: HTMLElement } {
+    const transcript = document.createElement('div');
+    const card = document.createElement('article');
+    card.className = 'cinder-approval-card';
+    card.dataset['cinderState'] = waiting ? 'pending' : 'approved';
+    transcript.append(card);
+    document.body.append(transcript);
+    return { transcript, card };
+  }
+
+  test('nothing holds it: nothing is told, and the pin does not stand aside', () => {
+    const { transcript } = transcriptWith(true);
+    expect(heldApprovalLayoutChanged(transcript)).toBe(false);
+  });
+
+  test('every placement that holds it places again, once each, and the pin stands aside', () => {
+    const { transcript } = transcriptWith(true);
+    const placed: string[] = [];
+    const chatLetsGo = holdApprovalPlacement(transcript, () => placed.push('chat'));
+    const hostLetsGo = holdApprovalPlacement(transcript, () => placed.push('host'));
+    expect(heldApprovalLayoutChanged(transcript)).toBe(true);
+    expect(placed).toEqual(['chat', 'host']);
+    // One lets go (the person took the transcript from it), twice over: the other still holds.
+    chatLetsGo();
+    chatLetsGo();
+    expect(heldApprovalLayoutChanged(transcript)).toBe(true);
+    expect(placed).toEqual(['chat', 'host', 'host']);
+    hostLetsGo();
+    expect(heldApprovalLayoutChanged(transcript)).toBe(false);
+    expect(placed).toEqual(['chat', 'host', 'host']);
+  });
+
+  test('a hold with nothing to place with still holds, and two holds given one function are two', () => {
+    const { transcript } = transcriptWith(true);
+    const letGo = holdApprovalPlacement(transcript);
+    expect(heldApprovalLayoutChanged(transcript)).toBe(true);
+    letGo();
+    let placed = 0;
+    const place = (): void => {
+      placed += 1;
+    };
+    const first = holdApprovalPlacement(transcript, place);
+    const second = holdApprovalPlacement(transcript, place);
+    first();
+    expect(heldApprovalLayoutChanged(transcript)).toBe(true);
+    expect(placed).toBe(1);
+    second();
+    expect(heldApprovalLayoutChanged(transcript)).toBe(false);
+  });
+
+  test('an approval decided somewhere else holds nothing, and no placement is told', () => {
+    const { transcript, card } = transcriptWith(true);
+    let placed = 0;
+    holdApprovalPlacement(transcript, () => {
+      placed += 1;
+    });
+    card.dataset['cinderState'] = 'approved';
+    expect(heldApprovalLayoutChanged(transcript)).toBe(false);
+    expect(placed).toBe(0);
+  });
+
+  test('a placement that lets go while it places leaves the others told', () => {
+    const { transcript } = transcriptWith(true);
+    const placed: string[] = [];
+    let letGo = (): void => {};
+    letGo = holdApprovalPlacement(transcript, () => {
+      placed.push('first');
+      letGo();
+    });
+    holdApprovalPlacement(transcript, () => placed.push('second'));
+    expect(heldApprovalLayoutChanged(transcript)).toBe(true);
+    expect(placed).toEqual(['first', 'second']);
   });
 });

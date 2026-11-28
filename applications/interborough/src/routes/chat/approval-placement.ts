@@ -26,11 +26,13 @@ export type ApprovalPlacement = {
  * @param place - Places the approval again, against the boxes as they are now.
  * @param hold - Says the placement holds a transcript, and returns what lets go of it: Chat's
  *   `holdApprovalPlacement`, so the transcript's own pin stands aside while this placement rests
- *   it, and the card is never carried past its place and brought back from the other side.
+ *   it, and the card is never carried past its place and brought back from the other side. It is
+ *   given what places the approval again, which Chat's pin calls whenever the transcript's box or
+ *   a row's changes: this placement watches only the transcript's box and the header.
  */
 export function createApprovalPlacement(
   place: () => void,
-  hold?: (transcript: HTMLElement) => () => void,
+  hold?: (transcript: HTMLElement, placeAgain: () => void) => () => void,
 ): ApprovalPlacement {
   let transcript: HTMLElement | undefined;
   let controller: AbortController | undefined;
@@ -56,7 +58,7 @@ export function createApprovalPlacement(
       if (transcript === next) return;
       release();
       transcript = next;
-      letGo = hold?.(next);
+      letGo = hold?.(next, placeAgain);
       controller = new AbortController();
       if (typeof ResizeObserver !== 'undefined') {
         observer = new ResizeObserver(() => {

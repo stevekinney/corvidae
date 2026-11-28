@@ -1460,11 +1460,29 @@
         onJumpToLatest?.();
       },
       // The jump rests where every other rest does (`useChatAutoScroll`), so a reply that streams
-      // after it moves the transcript on, never back.
-      () => (viewport === null ? 0 : autoScroll.restingTop(viewport)),
+      // after it moves the transcript on, never back. The rest is read for the box the jump lands
+      // in: while Jump to latest shows, the transcript gives up the band the control floats in,
+      // and it has that band back by the time the jump lands (`jumpBandRoom`).
+      () =>
+        viewport === null
+          ? 0
+          : Math.max(autoScroll.restingTop(viewport) - jumpBandRoom(viewport), 0),
     );
     // The jump is the page's own scroll, whatever was pressed to ask for it.
     autoScroll.pageScrolled();
+  }
+
+  /**
+   * The room `scroller` gives up to the band Jump to latest floats in, while the control shows
+   * (`.chat-container[data-jump-visible] > .chat-timeline`), and 0 once it is hidden. The control
+   * hides as a jump nears the end, so the transcript is that much taller where the jump lands,
+   * and rests that much nearer its start. A jump aimed at the rest of the shorter box landed the
+   * band's height past the rest, and the first chunk of a reply then brought the transcript back.
+   */
+  function jumpBandRoom(scroller: HTMLElement): number {
+    if (!jumpButtonShown) return 0;
+    const room = Number.parseFloat(getComputedStyle(scroller).marginBottom);
+    return Number.isFinite(room) ? room : 0;
   }
 
   /**
@@ -1878,15 +1896,22 @@
   //
   // While it has a card to place, it holds the transcript (`holdApprovalPlacement`): it is the one
   // thing that rests it, and the pin to the last row (`useChatAutoScroll`) stands aside, so the
-  // card is never carried past its place and brought back from the other side.
+  // card is never carried past its place and brought back from the other side. The pin watches the
+  // transcript's box and the box of every row, and says so as one changes (`placeNow`): the card is
+  // placed again there, in the frame the layout changed and before that frame is painted. A pass
+  // that waited for the next animation frame left one frame, and under a page clock that owns
+  // animation frames any number of them, with the rows settled and the card where the rows before
+  // them had left it. Only the scroll is made there: what is drawn from the placement (the
+  // reminder, Jump to latest) is still settled by the pass in the next animation frame, so nothing
+  // an observer of the layout is told changes the layout it is being told about.
   $effect(() => {
     const scroller = viewport;
     const messageId = approvalWait.messageId;
     approvalArrivalSettled = false;
     if (scroller === null || !approvalWaiting || messageId === undefined) return undefined;
-    let letGo: (() => void) | undefined = holdApprovalPlacement(scroller);
+    let letGo: (() => void) | undefined;
     const hold = (): void => {
-      letGo ??= holdApprovalPlacement(scroller);
+      letGo ??= holdApprovalPlacement(scroller, placeNow);
     };
     const unhold = (): void => {
       letGo?.();
@@ -1950,6 +1975,27 @@
     const schedule = (): void => {
       if (frame === 0) frame = requestAnimationFrame(settle);
     };
+    // The layout changed under the placement (the pin saw the transcript's box or a row's change,
+    // or a message arrive): the card is placed now, in this frame, by the same rule and under the
+    // same conditions as a pass (`settle`), which then looks once more. Where the card stood
+    // before the placement's last scroll says nothing about the new layout.
+    const placeNow = (): void => {
+      movedFrom = undefined;
+      const card = released ? null : pendingApprovalCard(containerRef, messageId);
+      if (
+        card !== null &&
+        approvalActionRow(card) !== null &&
+        !focusIsInside(card, scroller.ownerDocument.activeElement)
+      ) {
+        scroller.scrollTop += approvalPlacementShift(scroller, card) ?? 0;
+        // Where the placement leaves the transcript, whether or not it had to move it: a scroll
+        // heard from here (its own, the browser's as the box changed, a host's placement by the
+        // same rule) is not the person moving away, so Jump to latest stays hidden.
+        attentionLiftedTop = scroller.scrollTop;
+      }
+      schedule();
+    };
+    hold();
     const release = (): void => {
       released = true;
       unhold();

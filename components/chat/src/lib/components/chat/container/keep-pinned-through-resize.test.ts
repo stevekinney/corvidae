@@ -8,6 +8,8 @@ setupHappyDom();
 
 /** The observers the pin makes, by what each watches, so a test can say whose box changed. */
 const observers: Array<{ readonly callback: () => void; readonly targets: Set<Element> }> = [];
+/** Which box of each element is watched: `undefined` is the content box, the default. */
+const watchedBoxes = new WeakMap<Element, ResizeObserverBoxOptions | undefined>();
 const original = globalThis.ResizeObserver;
 
 beforeAll(() => {
@@ -17,8 +19,9 @@ beforeAll(() => {
       this.#entry = { callback, targets: new Set() };
       observers.push(this.#entry);
     }
-    observe(target: Element): void {
+    observe(target: Element, options?: ResizeObserverOptions): void {
       this.#entry.targets.add(target);
+      watchedBoxes.set(target, options?.box);
     }
     unobserve(target: Element): void {
       this.#entry.targets.delete(target);
@@ -56,7 +59,10 @@ async function rowsHeard(): Promise<void> {
  * `clientHeight` tall: one row that holds everything, then the sentinel. The page rests it as Chat
  * does: from its start where the pin says so, and at its true end otherwise.
  */
-function transcriptOf(layout: { rowsEnd: number; clientHeight: number; scrollTop?: number }) {
+function transcriptOf(
+  layout: { rowsEnd: number; clientHeight: number; scrollTop?: number },
+  held?: () => boolean,
+) {
   const transcript = document.createElement('div');
   document.body.append(transcript);
   const state = { endSpace: 60, scrollTop: 0, ...layout };
@@ -85,14 +91,18 @@ function transcriptOf(layout: { rowsEnd: number; clientHeight: number; scrollTop
 
   let asked = 0;
   let refuse = false;
-  const kept = keepPinnedThroughResize(transcript, () => {
-    asked += 1;
-    if (refuse) return;
-    const end = extent() - state.clientHeight;
-    // As the page does: a transcript a person took to its true end is followed to it.
-    state.scrollTop = kept.takenToEnd() ? end : (startSideRest(transcript) ?? end);
-    kept.rested();
-  });
+  const kept = keepPinnedThroughResize(
+    transcript,
+    () => {
+      asked += 1;
+      if (refuse) return;
+      const end = extent() - state.clientHeight;
+      // As the page does: a transcript a person took to its true end is followed to it.
+      state.scrollTop = kept.takenToEnd() ? end : (startSideRest(transcript) ?? end);
+      kept.rested();
+    },
+    held,
+  );
   /** The transcript is scrolled to `top`, and the scroll is heard. */
   const scrolledTo = (top: number): void => {
     state.scrollTop = top;
@@ -399,6 +409,54 @@ describe('keepPinnedThroughResize', () => {
     state.endSpace = 60;
     await rowsHeard();
     expect(state.scrollTop).toBe(120);
+  });
+
+  test('something that holds the transcript is asked at every change, wherever it left the transcript, and the rest is not', async () => {
+    // A waiting approval's placement: it rests the transcript by its own rule, in the frame the
+    // layout changed, and the pin stands aside.
+    const holder = { holds: true, asked: 0 };
+    const { transcript, row, state, asked, scrolledTo } = transcriptOf(
+      { rowsEnd: 520, clientHeight: 400 },
+      () => {
+        holder.asked += 1;
+        return holder.holds;
+      },
+    );
+    // The placement left the transcript where neither the pin (120) nor its true end (180) is.
+    scrolledTo(60);
+    // A row takes its size late, the box changes, a row is taken away: it is asked each time.
+    state.rowsEnd = 600;
+    changed(row);
+    expect(holder.asked).toBe(1);
+    state.clientHeight = 380;
+    changed(transcript);
+    expect(holder.asked).toBe(2);
+    const added = document.createElement('div');
+    row.after(added);
+    await rowsHeard();
+    added.remove();
+    await rowsHeard();
+    expect(holder.asked).toBe(3);
+    expect(asked()).toBe(0);
+    expect(state.scrollTop).toBe(60);
+    // It lets go with the transcript at its true end (600 and 60 held to 380): the pin has it
+    // again, and rests it where the layout says at the next change.
+    scrolledTo(280);
+    holder.holds = false;
+    changed(row);
+    expect(asked()).toBe(1);
+    expect(state.scrollTop).toBe(220);
+  });
+
+  test('a row is watched by its border box, so one that only gains padding is seen, and the transcript by its content box', async () => {
+    const { transcript, row } = transcriptOf({ rowsEnd: 520, clientHeight: 400 });
+    expect(watchedBoxes.get(row)).toBe('border-box');
+    // Its own padding is the room a header laid over its start takes: the content box says so.
+    expect(watchedBoxes.get(transcript)).toBeUndefined();
+    const added = document.createElement('div');
+    row.after(added);
+    await rowsHeard();
+    expect(watchedBoxes.get(added)).toBe('border-box');
   });
 
   test('stops looking once stop is called, and needs no ResizeObserver', () => {

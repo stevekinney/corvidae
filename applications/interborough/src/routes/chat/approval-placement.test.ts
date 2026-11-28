@@ -188,4 +188,29 @@ describe('createApprovalPlacement, holding the transcript', () => {
     expect(said).toEqual(['hold', 'let go']);
     transcript.remove();
   });
+
+  test('the hold is given what places the approval again, which places it only while the placement is in force', () => {
+    const transcript = document.createElement('div');
+    document.body.append(transcript);
+    let placements = 0;
+    let placeAgain: (() => void) | undefined;
+    const placement = createApprovalPlacement(
+      () => (placements += 1),
+      (_held, again) => {
+        placeAgain = again;
+        return () => {};
+      },
+    );
+    placement.placed(transcript);
+    expect(placeAgain).toBeInstanceOf(Function);
+    // Chat's pin saw a row above the card change size, with no change to the transcript's box or
+    // to the header: the approval is placed again.
+    placeAgain?.();
+    expect(placements).toBe(1);
+    // The person scrolls: the placement is over, and a call that comes late places nothing.
+    transcript.dispatchEvent(new window.Event('wheel'));
+    placeAgain?.();
+    expect(placements).toBe(1);
+    transcript.remove();
+  });
 });

@@ -1,6 +1,7 @@
 import { FIXTURE_ORIGIN } from '@lostgradient/testing/browser/fixture-port';
 import { environmentConfiguration } from '@lostgradient/testing/environment-configuration';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
+import { freezePageTimers } from '@lostgradient/testing/playwright/page-timers';
 import { expect, test, type Page } from '@playwright/test';
 
 /**
@@ -28,15 +29,38 @@ import { expect, test, type Page } from '@playwright/test';
  *
  * A person who had scrolled up is the negative control: they are not moved.
  *
- * The fixture is `fixtures/chat.svelte` behind `?pinnedResize=fits`, `long`, `empty` or `settles`.
+ * The `approval` cases are a waiting approval, which Chat places by its own rule while the pin
+ * stands aside: the rows before the card take their final size after the card was placed (their
+ * styles land a frame after they are drawn, as Interborough's do), and the card is placed again in
+ * the frame they do, so no frame is painted with the rows settled and the card where the rows
+ * before them had left it. The page's timers are stopped for those cases (`freezePageTimers`), as
+ * a design-review capture's clock holds them: a placement that waited for an animation frame would
+ * never come.
+ *
+ * The last cases are a reply that streams, chunk by chunk, after Jump to latest.
+ *
+ * The fixture is `fixtures/chat.svelte` behind `?pinnedResize=fits`, `long`, `empty`, `settles` or
+ * `approval`.
  *
  * Run: `bun run --cwd components/chat test:browser --grep "pinned transcript"`
  */
 async function open(
   page: Page,
-  mode: 'fits' | 'long' | 'empty' | 'settles',
+  mode: 'fits' | 'long' | 'empty' | 'settles' | 'approval',
   surface: 'transparent' | 'default' = 'transparent',
-  options: { readonly settled?: boolean; readonly box?: number } = {},
+  options: {
+    readonly settled?: boolean;
+    readonly box?: number;
+    /** What each of the person's messages gains, in pixels, when the rows settle. */
+    readonly grow?: number;
+    /** A header laid over the transcript's start, in pixels, and what it becomes when the rows settle. */
+    readonly inset?: number;
+    readonly insetSettled?: number;
+    /** The rows have their final size from the start. */
+    readonly rowsSettled?: boolean;
+    /** The run is still going, so the turn draws no outcome yet: a reply can stream after it. */
+    readonly running?: boolean;
+  } = {},
 ): Promise<void> {
   const url = new URL(
     fixtureRoute('chat'),
@@ -48,6 +72,13 @@ async function open(
   // `settles`: the panel under the rows has its full size from the start, and the chat's height.
   if (options.settled === true) url.searchParams.set('settled', '1');
   if (options.box !== undefined) url.searchParams.set('box', String(options.box));
+  if (options.grow !== undefined) url.searchParams.set('grow', String(options.grow));
+  if (options.inset !== undefined) url.searchParams.set('inset', String(options.inset));
+  if (options.insetSettled !== undefined) {
+    url.searchParams.set('insetSettled', String(options.insetSettled));
+  }
+  if (options.rowsSettled === true) url.searchParams.set('rowsSettled', '1');
+  if (options.running === true) url.searchParams.set('running', '1');
   await page.goto(url.href);
   const chat = page.getByTestId('pinned-resize-chat');
   await expect(chat.locator('.chat-timeline')).toBeVisible();
@@ -451,3 +482,303 @@ test.describe('a pinned transcript whose window is made smaller', () => {
     expectStartSideRest(await painted(page));
   });
 });
+
+/**
+ * Two frames laid out and painted, heard with a `ResizeObserver` and never with an animation frame:
+ * the page's clock may own those, and be stopped. Each observation is its own evaluation, so the
+ * second is never made inside the first's callback.
+ */
+async function paintedFrames(page: Page): Promise<void> {
+  for (let frame = 0; frame < 2; frame += 1) {
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const observer = new ResizeObserver(() => {
+            observer.disconnect();
+            resolve();
+          });
+          observer.observe(document.documentElement);
+        }),
+    );
+  }
+}
+
+interface Placed {
+  readonly scrollTop: number;
+  /** How far the transcript can scroll in all. */
+  readonly overflow: number;
+  /** How far it is from the end of its scrollable area. */
+  readonly distanceToEnd: number;
+  /** Where the waiting approval's card starts and ends, from the top of the transcript's box. */
+  readonly cardTop: number;
+  readonly cardBottom: number;
+  /** The height of the chat, which a second page is given to reach the same box. */
+  readonly chatHeight: number;
+}
+
+/** Reads where the waiting approval stands, from one layout. */
+async function placed(page: Page): Promise<Placed> {
+  return page.getByTestId('pinned-resize-chat').evaluate((chat) => {
+    const timeline = chat.querySelector<HTMLElement>('.chat-timeline');
+    const card = chat.querySelector<HTMLElement>(
+      '.cinder-approval-card[data-cinder-state="pending"]',
+    );
+    if (timeline === null || card === null) throw new Error('No approval waits in the transcript.');
+    const box = timeline.getBoundingClientRect();
+    const cardBox = card.getBoundingClientRect();
+    return {
+      scrollTop: timeline.scrollTop,
+      overflow: timeline.scrollHeight - timeline.clientHeight,
+      distanceToEnd: timeline.scrollHeight - timeline.clientHeight - timeline.scrollTop,
+      cardTop: cardBox.top - box.top,
+      cardBottom: cardBox.bottom - box.top,
+      chatHeight: chat.getBoundingClientRect().height,
+    };
+  });
+}
+
+/** How far the transcript is from the end of its scrollable area, now. */
+async function distanceToEnd(page: Page): Promise<number> {
+  const now = await placed(page);
+  return now.distanceToEnd;
+}
+
+/** How far the transcript is from its start, now. */
+async function scrolledTo(page: Page): Promise<number> {
+  const now = await placed(page);
+  return now.scrollTop;
+}
+
+/**
+ * The rows before the card take their final size: their styles land. Nothing is added to the
+ * transcript or taken from it, and the press is made with no pointer, so nothing is the person's.
+ */
+async function settleRows(page: Page): Promise<void> {
+  await page.getByTestId('pinned-resize-rows').dispatchEvent('click');
+}
+
+test.describe('a waiting approval whose rows settle after it was placed', () => {
+  test.use({ viewport: { width: 1280, height: 800 }, colorScheme: 'light' });
+
+  test('rows and the header inset that settle late place the card again in that frame, with the clock stopped (thirty tool calls, 1280)', async ({
+    page,
+  }) => {
+    // What the route's log shows at 1280 by 1100: the transcript overflows when the card is first
+    // placed (by 47 there), and then the rows above the card and the room the header takes grow
+    // (by 70 there: the header inset by 32 and the rows by 39).
+    const layout = { box: 480, inset: 28, insetSettled: 60, grow: 39 } as const;
+    // What the page reports as an error: a placement made in an observer's callback must not
+    // change the layout the observer is being told about (a ResizeObserver loop).
+    await page.addInitScript(() => {
+      const reported: string[] = [];
+      (globalThis as unknown as { pinnedErrors: string[] }).pinnedErrors = reported;
+      window.addEventListener('error', (event) => {
+        reported.push(event.message);
+      });
+    });
+    const reportedErrors = (): Promise<string[]> =>
+      page.evaluate(() => (globalThis as unknown as { pinnedErrors: string[] }).pinnedErrors);
+    await open(page, 'approval', 'transparent', layout);
+    // Placed at the transcript's end, which comes before the card's top reaches the header's line.
+    await expect.poll(() => distanceToEnd(page)).toBeLessThanOrEqual(1);
+    const first = await placed(page);
+    expect(first.overflow, 'the setup must overflow before the rows settle').toBeGreaterThan(2);
+    expect(first.scrollTop).toBeGreaterThan(0);
+
+    // No animation frame runs from here on.
+    await freezePageTimers(page);
+    await settleRows(page);
+    await paintedFrames(page);
+    const late = await placed(page);
+    expect(
+      late.overflow - first.overflow,
+      'the rows and the inset must have grown',
+    ).toBeGreaterThan(60);
+    // At the rule's position, the new end, in the frames painted since: not where the rows before
+    // them had left it, the whole growth short of the end.
+    expect(late.distanceToEnd).toBeLessThanOrEqual(1);
+    expect(await reportedErrors()).toEqual([]);
+
+    // The same rows, there in full before the card was first placed, rest in the same place.
+    await page.clock.resume();
+    await open(page, 'approval', 'transparent', { ...layout, rowsSettled: true });
+    await expect.poll(() => distanceToEnd(page)).toBeLessThanOrEqual(1);
+    const settledFirst = await placed(page);
+    expect(Math.abs(late.scrollTop - settledFirst.scrollTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(late.cardTop - settledFirst.cardTop)).toBeLessThanOrEqual(1);
+  });
+
+  test('rows that only gain border, with nothing else changing, place the card again', async ({
+    page,
+  }) => {
+    // Nothing the placement watches changes: not the transcript's box, not the card, no node. Only
+    // the border box of a row before the card does, which the pin watches and tells it of.
+    const layout = { box: 440, grow: 70 } as const;
+    await open(page, 'approval', 'transparent', layout);
+    await expect.poll(() => distanceToEnd(page)).toBeLessThanOrEqual(1);
+    const first = await placed(page);
+    expect(first.overflow, 'the setup must overflow before the rows settle').toBeGreaterThan(2);
+    await settleRows(page);
+    await paintedFrames(page);
+    await settled(page);
+    const late = await placed(page);
+    expect(Math.abs(late.overflow - first.overflow - 70)).toBeLessThanOrEqual(1);
+    expect(late.distanceToEnd).toBeLessThanOrEqual(1);
+  });
+
+  test('a person who scrolled up is not moved when the rows settle', async ({ page }) => {
+    // A shorter box, so the card rests well away from the transcript's start.
+    const layout = { box: 330, inset: 28, insetSettled: 60, grow: 39 } as const;
+    await open(page, 'approval', 'transparent', layout);
+    await expect.poll(() => scrolledTo(page)).toBeGreaterThan(150);
+    await settled(page);
+    const first = await placed(page);
+    const timeline = page.getByTestId('pinned-resize-chat').locator('.chat-timeline');
+    await timeline.hover();
+    await page.mouse.wheel(0, -120);
+    await expect.poll(() => scrolledTo(page)).toBeLessThanOrEqual(first.scrollTop - 100);
+    await settled(page);
+    const taken = await placed(page);
+    // Neither the transcript's start nor its end: somewhere only a person would leave it.
+    expect(taken.scrollTop).toBeGreaterThan(20);
+    expect(taken.distanceToEnd).toBeGreaterThan(100);
+    await settleRows(page);
+    await paintedFrames(page);
+    await settled(page);
+    expect(Math.abs((await scrolledTo(page)) - taken.scrollTop)).toBeLessThanOrEqual(1);
+  });
+});
+
+test.describe('a waiting approval in a transcript that fitted whole when it was placed', () => {
+  test.use({ viewport: { width: 768, height: 900 }, colorScheme: 'light' });
+
+  test("rows that settle late and make it overflow by a few pixels rest it at the rule's position, with the clock stopped (list beside the chat, 768)", async ({
+    page,
+  }) => {
+    // What the route's log shows at 768 by 900: everything fits when the card is first placed, so
+    // it rests at 0; then the rows grow by 55 and the header inset shrinks by 10, and the
+    // transcript holds 11 more than its box.
+    const layout = { inset: 40, insetSettled: 30, grow: 55 } as const;
+    await open(page, 'approval', 'transparent', layout);
+    // 34 to spare: the 45 the rows and the inset come to leaves 11 over.
+    await sizeBox(page, 34);
+    const first = await placed(page);
+    expect(first.scrollTop).toBe(0);
+
+    await freezePageTimers(page);
+    await settleRows(page);
+    await paintedFrames(page);
+    const late = await placed(page);
+    expect(Math.abs(late.overflow - 11), 'the setup must overflow by 11').toBeLessThanOrEqual(1);
+    // The end is 11 away and the card is whole there: it rests 11 from its start, not at 0.
+    expect(Math.abs(late.scrollTop - 11)).toBeLessThanOrEqual(1);
+
+    await page.clock.resume();
+    await open(page, 'approval', 'transparent', {
+      ...layout,
+      rowsSettled: true,
+      box: Math.round(first.chatHeight),
+    });
+    await expect.poll(() => distanceToEnd(page)).toBeLessThanOrEqual(1);
+    const settledFirst = await placed(page);
+    expect(Math.abs(late.scrollTop - settledFirst.scrollTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(late.cardTop - settledFirst.cardTop)).toBeLessThanOrEqual(1);
+  });
+});
+
+/** How far the last drawn row's end is from the end of the reading box: 0 where a transcript rests. */
+async function lastRowEndFromReadingEnd(page: Page): Promise<number> {
+  return page
+    .getByTestId('pinned-resize-chat')
+    .locator('.chat-timeline')
+    .evaluate((element) => {
+      let row = element.lastElementChild;
+      while (
+        row !== null &&
+        (row.classList.contains('chat-bottom-sentinel') || row.getBoundingClientRect().height < 0.5)
+      ) {
+        row = row.previousElementSibling;
+      }
+      if (row === null) throw new Error('The transcript has no row.');
+      const padding = Number.parseFloat(getComputedStyle(row).paddingBottom);
+      const rowEnd = row.getBoundingClientRect().bottom - (Number.isFinite(padding) ? padding : 0);
+      const scrollPadding = Number.parseFloat(getComputedStyle(element).scrollPaddingBottom);
+      const readingEnd =
+        element.getBoundingClientRect().bottom -
+        (Number.isFinite(scrollPadding) ? scrollPadding : 0);
+      return rowEnd - readingEnd;
+    });
+}
+
+for (const viewport of [
+  { width: 320, height: 640 },
+  { width: 1280, height: 800 },
+]) {
+  test.describe(`a reply that streams after Jump to latest, at ${String(viewport.width)} by ${String(viewport.height)}`, () => {
+    test.use({ viewport, colorScheme: 'light' });
+
+    test('moves the transcript on and never back, and its last row ends on the end of the reading box', async ({
+      page,
+    }) => {
+      await open(page, 'long', 'transparent', { running: true });
+      const chat = page.getByTestId('pinned-resize-chat');
+      const timeline = chat.locator('.chat-timeline');
+      await expect
+        .poll(async () => Math.abs(await lastRowEndFromReadingEnd(page)))
+        .toBeLessThanOrEqual(1);
+
+      // The person wheels up to read what came before, and Jump to latest is offered.
+      await timeline.hover();
+      await page.mouse.wheel(0, -600);
+      const jump = chat.locator('.chat-jump-button');
+      await expect(jump).toBeVisible();
+      await jump.click();
+      // It lands on the rest. The band the control floated in goes back to the transcript, which
+      // is rested once more in the taller box: the series starts from there.
+      await expect(jump).toBeHidden();
+      await expect
+        .poll(async () => Math.abs(await lastRowEndFromReadingEnd(page)))
+        .toBeLessThanOrEqual(1);
+      await settled(page);
+      const landed = await painted(page);
+      const start = landed.scrollTop;
+      expect(start).toBeGreaterThan(0);
+
+      // Every position the transcript takes from here on, as the browser reports each scroll.
+      await timeline.evaluate((element) => {
+        const tops: number[] = [element.scrollTop];
+        element.addEventListener('scroll', () => tops.push(element.scrollTop), { passive: true });
+        (globalThis as unknown as { pinnedTops: number[] }).pinnedTops = tops;
+      });
+
+      const rests: number[] = [start];
+      for (let chunk = 1; chunk <= 5; chunk += 1) {
+        await page.getByTestId('pinned-resize-stream').click();
+        await expect(chat.getByText(`Part ${String(chunk)}:`)).toBeVisible();
+        await settled(page);
+        const now = await painted(page);
+        // The reply's end is on the end of the reading box, clear of the fade, after every chunk.
+        expect(
+          Math.abs(await lastRowEndFromReadingEnd(page)),
+          `chunk ${String(chunk)}`,
+        ).toBeLessThanOrEqual(1);
+        expect(now.inFade, `chunk ${String(chunk)}`).toBeLessThanOrEqual(1);
+        // Not at its true end: Jump to latest claimed nothing for the person.
+        expect(now.distanceToEnd, `chunk ${String(chunk)}`).toBeGreaterThanOrEqual(8);
+        rests.push(now.scrollTop);
+      }
+      // The reply streamed past the end of the box: every chunk moved the transcript on.
+      for (let index = 1; index < rests.length; index += 1) {
+        expect(rests[index]!, `chunk ${String(index)}`).toBeGreaterThan(rests[index - 1]!);
+      }
+      // And it never went back, at any scroll in between.
+      const tops = await page.evaluate(
+        () => (globalThis as unknown as { pinnedTops: number[] }).pinnedTops,
+      );
+      expect(tops.length).toBeGreaterThan(5);
+      for (let index = 1; index < tops.length; index += 1) {
+        expect(tops[index]!, `scroll ${String(index)}`).toBeGreaterThanOrEqual(tops[index - 1]!);
+      }
+    });
+  });
+}

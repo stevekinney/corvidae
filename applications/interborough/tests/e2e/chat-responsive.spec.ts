@@ -226,6 +226,30 @@ async function expectApprovalTitleInView(page: Page): Promise<void> {
     .toBe(true);
 }
 
+/**
+ * Chat's arrival placement of the waiting approval has settled: the row that labels it rests on or
+ * below the header's line (the transcript's reading box starts there, under the header laid over its
+ * start), not under the header.
+ */
+async function expectApprovalPlaced(page: Page): Promise<void> {
+  const row = page.locator('[data-cinder-tool-call-row]').filter({ hasText: 'Issue refund' });
+  const transcript = page.locator('.chat-timeline').first();
+  await expect
+    .poll(async () => {
+      // A poll that throws would not retry, so a missing element is "not yet", as above.
+      const boxes = await readBoxes(page, { rowBox: row.first(), transcriptBox: transcript }).catch(
+        () => null,
+      );
+      if (boxes === null) return false;
+      const padding = await transcript.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).scrollPaddingTop),
+      );
+      const line = boxes.transcriptBox.y + (Number.isFinite(padding) ? padding : 0);
+      return boxes.rowBox.y >= line - 1;
+    })
+    .toBe(true);
+}
+
 test.describe('Chat on a phone (04y, 06l, 06m)', () => {
   // A button's 44px hit area exists only under a coarse pointer, so the phone is a touch phone.
   test.use({ hasTouch: true, isMobile: true });
@@ -236,6 +260,11 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await open(page, 320, `/chats/${SAMPLE_WORLD_THREADS.refund}`, 640);
     const approval = page.locator('[data-approval-decision]');
     await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
+    // The arrival placement is over before the press: the waiting row's label rests on the header's
+    // line, not under it. A press while the rows are still settling scrolls the button clear of the
+    // transcript's end padding and ends the placement where that left it, so the frame came out in
+    // one of two places.
+    await expectApprovalPlaced(page);
     await approval.getByRole('button', { name: 'Review in deck' }).click();
     const deck = page.getByRole('dialog', { name: 'Review tool approval' });
     const irreversible = deck.getByText('Approval can’t be undone.', { exact: true });

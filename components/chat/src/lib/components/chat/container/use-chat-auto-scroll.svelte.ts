@@ -1,6 +1,6 @@
 import { tick, untrack } from 'svelte';
 import type { Message } from '../conversation-model.ts';
-import { approvalPlacementHeld } from './chat-approval-review.ts';
+import { heldApprovalLayoutChanged } from './chat-approval-review.ts';
 import { commandFailureHeld } from './command-failure-reveal.ts';
 import {
   keepPinnedThroughResize,
@@ -142,8 +142,9 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
       return;
     }
     if (options.getScrollState().isUserScrolling) return;
-    // A waiting approval's arrival placement rests the transcript by its own rule.
-    if (approvalPlacementHeld(viewport)) return;
+    // A waiting approval's arrival placement rests the transcript by its own rule: it is told to
+    // place the approval again, against what has arrived.
+    if (heldApprovalLayoutChanged(viewport)) return;
     if (options.getIsVirtualized()) {
       correctVirtualizedViewport(viewport);
       pin?.rested();
@@ -239,17 +240,25 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
   $effect(() => {
     const viewport = options.getViewport();
     if (!viewport) return undefined;
-    const kept = keepPinnedThroughResize(viewport, () => {
-      // An empty or welcome transcript has no last row to rest on: it is never moved.
-      if (options.getMessages().length === 0) return;
-      // Earlier messages were put before a transcript that was not at its end: the rows that
-      // changed are the ones a person is reading, and their place is kept, as a message's own
-      // correction keeps it.
-      if (prependSuppressed) return;
-      // A refusal being kept in view rests the transcript itself (`commandFailureHeld`).
-      if (commandFailureHeld(viewport)) return;
-      applyBottomCorrection();
-    });
+    const kept = keepPinnedThroughResize(
+      viewport,
+      () => {
+        // An empty or welcome transcript has no last row to rest on: it is never moved.
+        if (options.getMessages().length === 0) return;
+        // Earlier messages were put before a transcript that was not at its end: the rows that
+        // changed are the ones a person is reading, and their place is kept, as a message's own
+        // correction keeps it.
+        if (prependSuppressed) return;
+        // A refusal being kept in view rests the transcript itself (`commandFailureHeld`).
+        if (commandFailureHeld(viewport)) return;
+        applyBottomCorrection();
+      },
+      // A waiting approval's placement holds the transcript wherever it left it: it is told of
+      // every change to the layout, whether or not the transcript is where the pin would rest it,
+      // and places the approval again in the same frame. A refusal kept in view comes first, as it
+      // does for the pin.
+      () => !commandFailureHeld(viewport) && heldApprovalLayoutChanged(viewport),
+    );
     pin = kept;
     return () => {
       kept.stop();

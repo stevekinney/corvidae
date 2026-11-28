@@ -7,6 +7,7 @@
     ChatConversationList,
     appendAssistantMessage,
     appendMessages,
+    appendStreamingMessage,
     appendToolCall,
     appendToolResult,
     appendUserMessage,
@@ -15,6 +16,7 @@
     deriveConversationSummary,
     resolveTurnOutcome,
     turnStateOf,
+    updateStreamingMessage,
     type ChatRowContext,
     type ChatSubmitEvent,
     type ChatAdapter,
@@ -113,12 +115,14 @@
   // and no message arrives to pin it, so only the box changing size can say the end moved. `empty`
   // is a transcript with no message, whose welcome fits its box until a test makes the box smaller.
   // `settles` is `fits` with a panel that takes its full size after the rows were first rested.
+  // `approval` is a question and an approval that waits on the person, which Chat places itself.
   const pinnedResizeMode = new URLSearchParams(globalThis.location.search).get('pinnedResize');
   const pinnedResizeEnabled =
     pinnedResizeMode === 'long' ||
     pinnedResizeMode === 'fits' ||
     pinnedResizeMode === 'empty' ||
-    pinnedResizeMode === 'settles';
+    pinnedResizeMode === 'settles' ||
+    pinnedResizeMode === 'approval';
   let pinnedStreamDropped = $state(false);
   // A notice in the composer that changes nothing in the transcript: the box shrinks and that is all.
   // The real reconnect notice also changes the turn it is about (an outcome row stops being drawn),
@@ -134,6 +138,23 @@
     new URLSearchParams(globalThis.location.search).get('settled') === '1',
   );
   const pinnedBox = new URLSearchParams(globalThis.location.search).get('box');
+  // The rows before the last one take their final size when their styles land, after they are
+  // drawn (Interborough's chat at 1280 and 768: the day divider and the messages grow by 39 to 55
+  // pixels, and the room the header takes from the transcript changes, a frame after the rows are
+  // first laid out). A button lands them: `?grow=<pixels>` is what each of the person's messages
+  // gains, as border, so its border box grows and its content box does not, and no node is added
+  // or taken away. `?inset=<pixels>` is a header laid over the transcript's start, and
+  // `?insetSettled=<pixels>` is what it becomes when the rows settle. `?rowsSettled=1` draws
+  // everything settled from the start, so a test can reach one layout in both orders.
+  let pinnedRowsSettled = $state(
+    new URLSearchParams(globalThis.location.search).get('rowsSettled') === '1',
+  );
+  const pinnedRowGrow = new URLSearchParams(globalThis.location.search).get('grow');
+  const pinnedInset = new URLSearchParams(globalThis.location.search).get('inset');
+  const pinnedInsetSettled = new URLSearchParams(globalThis.location.search).get('insetSettled');
+  const pinnedInsetNow = $derived(
+    pinnedRowsSettled && pinnedInsetSettled !== null ? pinnedInsetSettled : pinnedInset,
+  );
   const pinnedSurface =
     new URLSearchParams(globalThis.location.search).get('surface') === 'default'
       ? 'default'
@@ -147,6 +168,33 @@
         `Order ${order} is $42.00, delivered Monday, and nothing else about it needs saying.`,
       );
     }
+    if (pinnedResizeMode === 'approval') {
+      return appendMessages(
+        appendUserMessage(history, 'Look up order 4471. It arrived damaged, so refund it.'),
+        {
+          role: 'tool-call',
+          content: '',
+          toolCall: { id: 'pinned-refund', name: 'issue_refund', arguments: { order: '4471' } },
+        },
+        {
+          role: 'tool-result',
+          content: '',
+          toolResult: {
+            callId: 'pinned-refund',
+            outcome: 'action_required',
+            content: null,
+            action: {
+              type: 'approval',
+              message: 'Refund order 4471 for $42.00?',
+              risk: 'high',
+              operation: { kind: 'command', command: 'issue_refund --order 4471 --amount 42.00' },
+              policyVersion: 'approval-fixture-policy-v1',
+              idempotencyKey: 'fixture-pinned-refund',
+            },
+          },
+        },
+      );
+    }
     return appendToolResult(
       appendToolCall(
         appendUserMessage(
@@ -158,9 +206,45 @@
       { callId: 'pinned-lookup', outcome: 'success', content: '$42.00, delivered Monday' },
     );
   })();
+  // A reply that streams after the rows: each press of a button is the next chunk, so a test says
+  // when each one lands and nothing runs on a timer. `?running=1` is the run still going before
+  // the reply starts, as it is when a reply streams: a turn that is over draws its outcome after
+  // its steps, and that row would leave as the reply's first chunk arrives.
+  const pinnedRunning = new URLSearchParams(globalThis.location.search).get('running') === '1';
+  let pinnedStreamed = $state.raw<{
+    readonly conversation: typeof pinnedResizeHistory;
+    readonly messageId: string;
+    readonly chunks: number;
+    readonly text: string;
+  } | null>(null);
+  function streamPinnedChunk(): void {
+    const chunks = (pinnedStreamed?.chunks ?? 0) + 1;
+    const chunk = `Part ${String(chunks)}: order 4471 cost $42.00 and was delivered on Monday, and nothing else is open on the account that needs an answer from you today.`;
+    if (pinnedStreamed === null) {
+      const started = appendStreamingMessage(pinnedResizeHistory, 'assistant');
+      pinnedStreamed = {
+        conversation: updateStreamingMessage(started.conversation, started.messageId, chunk),
+        messageId: started.messageId,
+        chunks,
+        text: chunk,
+      };
+      return;
+    }
+    const text = `${pinnedStreamed.text}\n\n${chunk}`;
+    pinnedStreamed = {
+      conversation: updateStreamingMessage(
+        pinnedStreamed.conversation,
+        pinnedStreamed.messageId,
+        text,
+      ),
+      messageId: pinnedStreamed.messageId,
+      chunks,
+      text,
+    };
+  }
   const pinnedResizeOutcome = $derived(
     resolveTurnOutcome(
-      pinnedResizeHistory,
+      pinnedStreamed?.conversation ?? pinnedResizeHistory,
       pinnedStreamDropped
         ? {
             running: true,
@@ -173,7 +257,7 @@
               runDropped: true,
             },
           }
-        : { running: false, now: 0 },
+        : { running: pinnedRunning || pinnedStreamed !== null, now: 0 },
     ),
   );
   const turnOutcome = turnOutcomeFixture(turnOutcomeKind, 'steps');
@@ -742,12 +826,22 @@
     <Button data-testid="pinned-resize-settle" onclick={() => (pinnedPanelSettled = true)}>
       Settle the panel
     </Button>
+    <Button data-testid="pinned-resize-rows" onclick={() => (pinnedRowsSettled = true)}>
+      Settle the rows
+    </Button>
+    <Button data-testid="pinned-resize-stream" onclick={streamPinnedChunk}>Stream a chunk</Button>
     <div
       style:height={pinnedBox !== null
         ? `${pinnedBox}px`
         : pinnedResizeMode === 'long'
           ? '26rem'
           : '60rem'}
+      style:--cinder-chat-overlay-inset-start={pinnedInsetNow === null
+        ? undefined
+        : `${pinnedInsetNow}px`}
+      style:--pinned-row-grow={pinnedRowsSettled && pinnedRowGrow !== null
+        ? `${pinnedRowGrow}px`
+        : undefined}
       data-testid="pinned-resize-chat"
     >
       {#snippet pinnedNotice()}
@@ -773,6 +867,7 @@
         {...pinnedResizeMode === 'settles' ? { trailing: pinnedPanel } : {}}
         conversation={pinnedResizeOutcome.conversation}
         capabilities={{ attachments: false }}
+        {...pinnedResizeMode === 'approval' ? { adapter, onApprovalResolve: () => {} } : {}}
         messageTurnState={(message) => turnStateOf(pinnedResizeOutcome, message)}
         emptyTitle="What should the assistant do?"
         emptyDescription="It looks up orders and says what is open on the account."
@@ -806,6 +901,14 @@
 
   .chat-layout-fixture-container {
     container-type: inline-size;
+  }
+
+  /* COR-2725: what each of the person's messages gains when the rows settle (`?grow`). Border, so
+   * the row's border box grows and its content box does not, as when padding lands late. */
+  :global(
+    [data-testid='pinned-resize-chat'] .chat-timeline > .chat-message-wrapper[data-role='user']
+  ) {
+    border-block-end: var(--pinned-row-grow, 0px) solid transparent;
   }
 
   .chat-layout-fixture {
